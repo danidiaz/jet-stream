@@ -5,6 +5,9 @@ module Jet (
         each,
         unfold,
         untilEOF,
+        -- * List-like functions
+        take,
+        drop,
         -- * Control operations
         control,
         control_,

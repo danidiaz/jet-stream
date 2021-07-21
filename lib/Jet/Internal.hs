@@ -94,6 +94,36 @@ untilEOF hIsEOF hGetLine h = Jet \stop step ->
                       go s'
    in go
 
+data Pair a b = Pair !a !b
+
+pairExtract (Pair _ b) = b
+pairEnv (Pair a _) = a
+
+drop :: Int -> Jet i -> Jet i
+drop count (Jet f) = Jet \stop step initial -> do
+  let stop' = stop . pairExtract
+      step' (Pair dropCount s) i =
+        if
+            | dropCount < count -> do
+              pure (Pair (succ dropCount) s)
+            | otherwise -> do
+              !s' <- step s i
+              pure (Pair dropCount s')
+      initial' = Pair 0 initial
+  Pair _ final <- f stop' step' initial'
+  pure final
+
+take :: Int -> Jet i -> Jet i
+take count (Jet f) = Jet \stop step initial -> do
+    let stop' (dropCount, s) = 
+            stop s || dropCount >= count
+        step' (dropCount, s) i = do
+            s' <- step s i
+            pure (succ dropCount, s')
+        initial' = (0, initial)
+    (_, final) <- f stop' step' initial'
+    pure final
+
 control :: forall s a resource. (forall x. (resource -> IO x) -> IO x) -> Jet resource
 control f =
   Jet \stop step initial ->
