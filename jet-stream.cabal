@@ -39,6 +39,7 @@ common common
 library
     import:           common
     exposed-modules:  Jet
+                      Jet.Internal
     build-depends:    
     hs-source-dirs:   lib
 
