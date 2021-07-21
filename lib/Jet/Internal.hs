@@ -71,6 +71,9 @@ instance MonadPlus Jet where
     mzero = mempty
     mplus = (<>)
 
+instance MonadFail Jet where
+    fail _ = mzero
+
 each :: Foldable f => f a -> Jet a
 each (toList -> seed) = Jet \stop step ->
   let go b s =
