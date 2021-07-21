@@ -12,6 +12,8 @@
 
 module Jet.Internal where
 
+import Control.Applicative
+import Control.Monad
 import Control.Monad.IO.Class
 import Data.Foldable (for_, toList)
 import Prelude hiding (drop, fold, foldM, take)
@@ -40,6 +42,34 @@ instance MonadIO Jet where
         | otherwise -> do
           r <- action
           step initial r
+
+instance Semigroup (Jet a) where
+    Jet f1 <> Jet f2 = Jet \stop step s0 -> 
+        do 
+            if
+                | stop s0 ->
+                  pure s0
+                | otherwise -> 
+                    do
+                        !s1 <- f1 stop step s0
+                        if
+                            | stop s1 ->
+                              pure s1
+                            | otherwise ->
+                                do
+                                    !s2 <- f2 stop step s1
+                                    pure s2
+
+instance Monoid (Jet a) where
+    mempty = Jet \_ _ initial -> pure initial
+
+instance Alternative Jet where
+    (<|>) = (<>)
+    empty = mempty
+
+instance MonadPlus Jet where
+    mzero = mempty
+    mplus = (<>)
 
 each :: Foldable f => f a -> Jet a
 each (toList -> seed) = Jet \stop step ->
