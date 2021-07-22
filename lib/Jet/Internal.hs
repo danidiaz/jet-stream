@@ -44,19 +44,16 @@ instance MonadIO Jet where
           step initial r
 
 instance Semigroup (Jet a) where
-    Jet f1 <> Jet f2 = Jet \stop step s0 -> 
-        do 
+    Jet f1 <> Jet f2 = Jet \stop step s0 -> do 
             if
                 | stop s0 ->
                   pure s0
-                | otherwise -> 
-                    do
+                | otherwise -> do
                         !s1 <- f1 stop step s0
                         if
                             | stop s1 ->
                               pure s1
-                            | otherwise ->
-                                do
+                            | otherwise -> do
                                     !s2 <- f2 stop step s1
                                     pure s2
 
@@ -85,8 +82,7 @@ each (toList -> seed) = Jet \stop step ->
                 [] ->
                   pure s
                 -- see corresponding comment in unfold.
-                x : xs ->
-                  do
+                x : xs -> do
                     !s' <- step s x
                     go xs s'
    in go seed
@@ -97,15 +93,13 @@ unfold f seed = Jet \stop step ->
         if
             | stop s ->
               pure s
-            | otherwise ->
-              do
+            | otherwise -> do
                 next <- f b
                 case next of
                   Nothing ->
                     pure s
                   -- strictness only on the states. Good idea, or bad?
-                  Just !(a, !b') ->
-                    do
+                  Just !(a, !b') -> do
                       !s' <- step s a
                       go b' s'
    in go seed
@@ -133,29 +127,51 @@ pairExtract (Pair _ b) = b
 pairEnv (Pair a _) = a
 
 drop :: Int -> Jet i -> Jet i
-drop count (Jet f) = Jet \stop step initial -> do
+drop limit (Jet f) = Jet \stop step initial -> do
   let stop' = stop . pairExtract
-      step' (Pair dropCount s) i =
+      step' (Pair count s) i =
         if
-            | dropCount < count -> do
-              pure (Pair (succ dropCount) s)
+            | count < limit -> do
+              pure (Pair (succ count) s)
             | otherwise -> do
               !s' <- step s i
-              pure (Pair dropCount s')
+              pure (Pair count s')
       initial' = Pair 0 initial
   Pair _ final <- f stop' step' initial'
   pure final
 
-take :: Int -> Jet i -> Jet i
-take count (Jet f) = Jet \stop step initial -> do
-    let stop' (dropCount, s) = 
-            stop s || dropCount >= count
-        step' (dropCount, s) i = do
-            s' <- step s i
-            pure (succ dropCount, s')
-        initial' = (0, initial)
-    (_, final) <- f stop' step' initial'
+data DropState = StillDropping | DroppingNoMore
+
+dropWhile :: (a -> Bool) -> Jet a -> Jet a
+dropWhile p (Jet f) = Jet \stop step initial -> do
+  let stop' = stop . pairExtract
+      step' (Pair DroppingNoMore s) a = do
+          !s' <- step s a
+          pure (Pair DroppingNoMore s')
+      step' (Pair StillDropping s) a 
+        | p a =
+            pure (Pair StillDropping s)
+        | otherwise = do
+            !s' <- step s a
+            pure (Pair DroppingNoMore s')
+      initial' = (Pair StillDropping initial)
+  Pair _ final <- f stop' step' initial'
+  pure final
+
+take :: Int -> Jet a -> Jet a
+take limit (Jet f) = Jet \stop step initial -> do
+    let stop' (Pair count s) = 
+            stop s || count >= limit
+        step' (Pair count s) a = do
+            s' <- step s a
+            pure (Pair (succ count) s')
+        initial' = Pair 0 initial
+    Pair _ final <- f stop' step' initial'
     pure final
+
+data TakeState = StillTaking | TakingNoMore 
+
+-- TBD: takeWhile
 
 control :: forall s a resource. (forall x. (resource -> IO x) -> IO x) -> Jet resource
 control f =

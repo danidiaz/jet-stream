@@ -1,22 +1,23 @@
+{-# LANGUAGE ImportQualifiedPost #-}
 module Jet (
         -- * The Jet type
         Jet,
         -- * Building Jets
-        each,
-        unfold,
-        untilEOF,
+        J.each,
+        J.unfold,
+        J.untilEOF,
         -- * List-like functions
-        take,
-        drop,
+        J.drop,
+        J.dropWhile,
+        J.take,
         -- * Control operations
-        control,
-        control_,
+        J.control,
+        J.control_,
         -- * Folding Jets
-        fold,
-        foldM,
+        J.fold,
+        J.foldM,
     ) where
 
-import Prelude hiding (drop, fold, foldM, take)
-
-import Jet.Internal
+import Jet.Internal (Jet)
+import Jet.Internal qualified as J
 
