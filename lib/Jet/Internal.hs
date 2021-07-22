@@ -18,7 +18,7 @@ import Control.Monad.IO.Class
 import Data.Foldable (for_, toList)
 import Prelude hiding (drop, fold, foldM, take)
 
-newtype Jet i = Jet {runJet :: forall s. (s -> Bool) -> (s -> i -> IO s) -> s -> IO s} deriving (Functor)
+newtype Jet a = Jet {runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s} deriving (Functor)
 
 instance Applicative Jet where
   pure i = Jet \stop step initial ->
@@ -126,15 +126,15 @@ data Pair a b = Pair !a !b
 pairExtract (Pair _ b) = b
 pairEnv (Pair a _) = a
 
-drop :: Int -> Jet i -> Jet i
+drop :: Int -> Jet a -> Jet a
 drop limit (Jet f) = Jet \stop step initial -> do
   let stop' = stop . pairExtract
-      step' (Pair count s) i =
+      step' (Pair count s) a =
         if
             | count < limit -> do
               pure (Pair (succ count) s)
             | otherwise -> do
-              !s' <- step s i
+              !s' <- step s a
               pure (Pair count s')
       initial' = Pair 0 initial
   Pair _ final <- f stop' step' initial'
