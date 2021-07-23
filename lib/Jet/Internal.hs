@@ -87,6 +87,21 @@ each (toList -> seed) = Jet \stop step ->
                   go xs s'
    in go seed
 
+iterate :: (a -> a) -> a -> Jet a
+iterate h = iterateM (fmap pure h)
+
+iterateM :: (a -> IO a) -> a -> Jet a
+iterateM h a0 = Jet \stop step ->
+  let go a s =
+        if
+            | stop s ->
+              pure s
+            | otherwise -> do
+              !s' <- step s a
+              !a' <- h a 
+              go a' s'
+   in go a0
+
 unfold :: (b -> Maybe (a, b)) -> b -> Jet a
 unfold h = unfoldM (fmap pure h)
 
