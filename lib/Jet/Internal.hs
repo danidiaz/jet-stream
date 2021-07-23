@@ -13,10 +13,10 @@
 module Jet.Internal where
 
 import Control.Applicative
-import Control.Monad
+import Control.Monad hiding (zipWithM)
 import Control.Monad.IO.Class
 import Data.Foldable (for_, toList)
-import Prelude hiding (unfold,take,takeWhile,drop, dropWhile, fold, foldM)
+import Prelude hiding (unfold,take,takeWhile,drop, dropWhile, fold, foldM, zip, zipWith)
 
 newtype Jet a = Jet {runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s} deriving (Functor)
 
@@ -190,7 +190,7 @@ take limit (Jet f) = Jet \stop step initial -> do
   let stop' (Pair count s) =
         count >= limit || stop s
       step' (Pair count s) a = do
-        s' <- step s a
+        !s' <- step s a
         pure (Pair (succ count) s')
       initial' = Pair 0 initial
   Pair _ final <- f stop' step' initial'
@@ -211,7 +211,7 @@ takeWhileM p (Jet f) = Jet \stop step initial -> do
         keepTaking <- p a
         if
             | keepTaking -> do
-              s' <- step s a
+              !s' <- step s a
               pure (Pair internal s')
             | otherwise ->
               pure (Pair TakingNoMore s)
@@ -236,9 +236,33 @@ mapAccumM stepAcc initialAcc (Jet f) = Jet \stop step initial -> do
       stop' = stop . pairExtract
       step' (Pair acc s) b = do
         pair@(acc', _) <- stepAcc acc b 
-        s' <- step s pair
+        !s' <- step s pair
         pure (Pair acc' s')
       initial' = Pair initialAcc initial
+    Pair _ final <- f stop' step' initial'
+    pure final
+
+zip :: [a] -> Jet b -> Jet (a,b)
+zip = zipWith (,)
+
+zipWith :: (a -> b -> c) -> [a] -> Jet b -> Jet c
+zipWith zf as0 = zipWithM (fmap (fmap pure) zf) (map pure as0)
+
+zipM :: [IO a] -> Jet b -> Jet (a,b)
+zipM = zipWithM (\x y -> pure (x,y))
+
+zipWithM :: (a -> b -> IO c) -> [IO a] -> Jet b -> Jet c
+zipWithM zf ioas0 (Jet f) = Jet \stop step initial -> do
+    let 
+      stop' (Pair [] _) = True
+      stop' (Pair _ s) = stop s
+      step' (Pair (ioa : ioas) s) b = do
+        a <- ioa
+        z <- zf a b
+        !s' <- step s z
+        pure (Pair ioas s')
+      step' (Pair [] _) _ = error "never happens"
+      initial' = Pair ioas0 initial
     Pair _ final <- f stop' step' initial'
     pure final
 

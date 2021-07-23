@@ -16,6 +16,11 @@ module Jet (
         J.takeWhile,
         J.mapAccum,
         J.mapAccumM,
+        -- * Zips
+        J.zip,
+        J.zipWith,
+        J.zipM,
+        J.zipWithM,
         -- * Control operations
         J.control,
         J.control_,
