@@ -44,32 +44,32 @@ instance MonadIO Jet where
           step initial r
 
 instance Semigroup (Jet a) where
-    Jet f1 <> Jet f2 = Jet \stop step s0 -> do 
-            if
-                | stop s0 ->
-                  pure s0
-                | otherwise -> do
-                        !s1 <- f1 stop step s0
-                        if
-                            | stop s1 ->
-                              pure s1
-                            | otherwise -> do
-                                    !s2 <- f2 stop step s1
-                                    pure s2
+  Jet f1 <> Jet f2 = Jet \stop step s0 -> do
+    if
+        | stop s0 ->
+          pure s0
+        | otherwise -> do
+          !s1 <- f1 stop step s0
+          if
+              | stop s1 ->
+                pure s1
+              | otherwise -> do
+                !s2 <- f2 stop step s1
+                pure s2
 
 instance Monoid (Jet a) where
-    mempty = Jet \_ _ initial -> pure initial
+  mempty = Jet \_ _ initial -> pure initial
 
 instance Alternative Jet where
-    (<|>) = (<>)
-    empty = mempty
+  (<|>) = (<>)
+  empty = mempty
 
 instance MonadPlus Jet where
-    mzero = mempty
-    mplus = (<>)
+  mzero = mempty
+  mplus = (<>)
 
 instance MonadFail Jet where
-    fail _ = mzero
+  fail _ = mzero
 
 each :: Foldable f => f a -> Jet a
 each (toList -> seed) = Jet \stop step ->
@@ -83,8 +83,8 @@ each (toList -> seed) = Jet \stop step ->
                   pure s
                 -- see corresponding comment in unfold.
                 x : xs -> do
-                    !s' <- step s x
-                    go xs s'
+                  !s' <- step s x
+                  go xs s'
    in go seed
 
 unfold :: (b -> IO (Maybe (a, b))) -> b -> Jet a
@@ -94,36 +94,37 @@ unfold f seed = Jet \stop step ->
             | stop s ->
               pure s
             | otherwise -> do
-                next <- f b
-                case next of
-                  Nothing ->
-                    pure s
-                  -- strictness only on the states. Good idea, or bad?
-                  Just !(a, !b') -> do
-                      !s' <- step s a
-                      go b' s'
+              next <- f b
+              case next of
+                Nothing ->
+                  pure s
+                -- strictness only on the states. Good idea, or bad?
+                Just !(a, !b') -> do
+                  !s' <- step s a
+                  go b' s'
    in go seed
 
 untilEOF :: (h -> IO Bool) -> (h -> IO a) -> h -> Jet a
 untilEOF hIsEOF hGetLine h = Jet \stop step ->
   let go s =
-          if
-              | stop s -> do
-                pure s
-              | otherwise -> do
-                eof <- hIsEOF h
-                if
-                    | eof -> do
-                      pure s
-                    | otherwise -> do
-                      line <- hGetLine h
-                      s' <- step s line
-                      go s'
+        if
+            | stop s -> do
+              pure s
+            | otherwise -> do
+              eof <- hIsEOF h
+              if
+                  | eof -> do
+                    pure s
+                  | otherwise -> do
+                    line <- hGetLine h
+                    s' <- step s line
+                    go s'
    in go
 
 data Pair a b = Pair !a !b
 
 pairExtract (Pair _ b) = b
+
 pairEnv (Pair a _) = a
 
 drop :: Int -> Jet a -> Jet a
@@ -146,30 +147,47 @@ dropWhile :: (a -> Bool) -> Jet a -> Jet a
 dropWhile p (Jet f) = Jet \stop step initial -> do
   let stop' = stop . pairExtract
       step' (Pair DroppingNoMore s) a = do
+        !s' <- step s a
+        pure (Pair DroppingNoMore s')
+      step' (Pair StillDropping s) a
+        | p a =
+          pure (Pair StillDropping s)
+        | otherwise = do
           !s' <- step s a
           pure (Pair DroppingNoMore s')
-      step' (Pair StillDropping s) a 
-        | p a =
-            pure (Pair StillDropping s)
-        | otherwise = do
-            !s' <- step s a
-            pure (Pair DroppingNoMore s')
       initial' = (Pair StillDropping initial)
   Pair _ final <- f stop' step' initial'
   pure final
 
 take :: Int -> Jet a -> Jet a
 take limit (Jet f) = Jet \stop step initial -> do
-    let stop' (Pair count s) = 
-            stop s || count >= limit
-        step' (Pair count s) a = do
-            s' <- step s a
-            pure (Pair (succ count) s')
-        initial' = Pair 0 initial
-    Pair _ final <- f stop' step' initial'
-    pure final
+  let stop' (Pair count s) =
+        count >= limit || stop s
+      step' (Pair count s) a = do
+        s' <- step s a
+        pure (Pair (succ count) s')
+      initial' = Pair 0 initial
+  Pair _ final <- f stop' step' initial'
+  pure final
 
-data TakeState = StillTaking | TakingNoMore 
+data TakeState = StillTaking | TakingNoMore
+
+takeWhile :: (a -> Bool) -> Jet a -> Jet a
+takeWhile p (Jet f) = Jet \stop step initial -> do
+  let stop' (Pair TakingNoMore _) =
+        True
+      stop' (Pair StillTaking s) =
+        stop s
+      step' (Pair internal s) a =
+        if
+            | p a -> do
+              s' <- step s a
+              pure (Pair internal s')
+            | otherwise ->
+              pure (Pair TakingNoMore s)
+      initial' = Pair StillTaking initial
+  Pair _ final <- f stop' step' initial'
+  pure final
 
 -- TBD: takeWhile
 
@@ -190,7 +208,6 @@ control_ f =
           pure initial
         | otherwise -> do
           f (step initial ())
-
 
 fold :: Jet a -> (s -> a -> s) -> s -> (s -> r) -> IO r
 fold (Jet f) step initial coda = do
