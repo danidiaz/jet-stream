@@ -40,8 +40,8 @@ instance MonadIO Jet where
     if
         | stop initial -> pure initial
         | otherwise -> do
-          r <- action
-          step initial r
+          a <- action
+          step initial a
 
 instance Semigroup (Jet a) where
   Jet f1 <> Jet f2 = Jet \stop step s0 -> do
@@ -87,8 +87,8 @@ each (toList -> seed) = Jet \stop step ->
                   go xs s'
    in go seed
 
-unfold :: (b -> IO (Maybe (a, b))) -> b -> Jet a
-unfold f seed = Jet \stop step ->
+unfoldM :: (b -> IO (Maybe (a, b))) -> b -> Jet a
+unfoldM f seed = Jet \stop step ->
   let go b s =
         if
             | stop s ->
@@ -126,6 +126,9 @@ data Pair a b = Pair !a !b
 pairExtract (Pair _ b) = b
 
 pairEnv (Pair a _) = a
+
+-- fromTuple :: (a, b) -> Pair a b 
+-- fromTuple (a, b) -> Pair a b
 
 drop :: Int -> Jet a -> Jet a
 drop limit (Jet f) = Jet \stop step initial -> do
@@ -189,7 +192,28 @@ takeWhile p (Jet f) = Jet \stop step initial -> do
   Pair _ final <- f stop' step' initial'
   pure final
 
+-- | Behaves like a combination of 'fmap' and 'foldl'; it applies a function to
+-- each element of a structure passing an accumulating parameter from left to right.
+--
+-- The resulting 'Jet' has the same number of elements as the original one.
+--
+-- One difference with 'Data.Traversable.mapAccumL' is that the current value
+-- of the accumulator is yielded along with each element, instead of only
+-- returning the final value at the end.
+mapAccum :: (a -> b -> (a, c)) -> a -> Jet b -> Jet (a,c)
+mapAccum stepAcc = mapAccumM (fmap (fmap pure) stepAcc)
 
+mapAccumM :: (a -> b -> IO (a, c)) -> a -> Jet b -> Jet (a,c)
+mapAccumM stepAcc initialAcc (Jet f) = Jet \stop step initial -> do
+    let 
+      stop' = stop . pairExtract
+      step' (Pair acc s) b = do
+        pair@(acc', _) <- stepAcc acc b 
+        s' <- step s pair
+        pure (Pair acc' s')
+      initial' = Pair initialAcc initial
+    Pair _ final <- f stop' step' initial'
+    pure final
 
 control :: forall s a resource. (forall x. (resource -> IO x) -> IO x) -> Jet resource
 control f =

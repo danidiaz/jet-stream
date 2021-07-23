@@ -4,7 +4,7 @@ module Jet (
         Jet,
         -- * Building Jets
         J.each,
-        J.unfold,
+        J.unfoldM,
         J.untilEOF,
         -- * List-like functions
         J.drop,
