@@ -11,8 +11,8 @@
 
 - The
   [Stream](https://docs.oracle.com/en/java/javase/16/docs/api/java.base/java/util/stream/Stream.html)
-  type from Java. (And the
-  [foldl](https://docs.oracle.com/en/java/javase/16/docs/api/java.base/java/util/stream/Collectors.html)
-  package would be the analogue of
+  type from Java is somewhat similar to this library's `Jet`. (And the
+  [foldl](https://hackage.haskell.org/package/foldl) library package would be
+  the analogue of
   [Collectors](https://docs.oracle.com/en/java/javase/16/docs/api/java.base/java/util/stream/Collectors.html).)
 
