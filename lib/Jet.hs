@@ -4,6 +4,7 @@ module Jet (
         Jet,
         -- * Building Jets
         J.each,
+        J.unfold,
         J.unfoldM,
         J.untilEOF,
         -- * List-like functions
@@ -11,6 +12,8 @@ module Jet (
         J.dropWhile,
         J.take,
         J.takeWhile,
+        J.mapAccum,
+        J.mapAccumM,
         -- * Control operations
         J.control,
         J.control_,

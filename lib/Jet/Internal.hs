@@ -16,7 +16,7 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.Foldable (for_, toList)
-import Prelude hiding (drop, fold, foldM, take)
+import Prelude hiding (unfold,take,takeWhile,drop, dropWhile, fold, foldM)
 
 newtype Jet a = Jet {runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s} deriving (Functor)
 
@@ -87,6 +87,9 @@ each (toList -> seed) = Jet \stop step ->
                   go xs s'
    in go seed
 
+unfold :: (b -> Maybe (a, b)) -> b -> Jet a
+unfold h = unfoldM (fmap pure h)
+
 unfoldM :: (b -> IO (Maybe (a, b))) -> b -> Jet a
 unfoldM f seed = Jet \stop step ->
   let go b s =
@@ -105,18 +108,18 @@ unfoldM f seed = Jet \stop step ->
    in go seed
 
 untilEOF :: (h -> IO Bool) -> (h -> IO a) -> h -> Jet a
-untilEOF hIsEOF hGetLine h = Jet \stop step ->
+untilEOF hIsEOF' hGetLine' handle = Jet \stop step ->
   let go s =
         if
             | stop s -> do
               pure s
             | otherwise -> do
-              eof <- hIsEOF h
+              eof <- hIsEOF' handle
               if
                   | eof -> do
                     pure s
                   | otherwise -> do
-                    line <- hGetLine h
+                    line <- hGetLine' handle
                     s' <- step s line
                     go s'
    in go
@@ -147,17 +150,22 @@ drop limit (Jet f) = Jet \stop step initial -> do
 data DropState = StillDropping | DroppingNoMore
 
 dropWhile :: (a -> Bool) -> Jet a -> Jet a
-dropWhile p (Jet f) = Jet \stop step initial -> do
+dropWhile p  = dropWhileM (fmap pure p)
+
+dropWhileM :: (a -> IO Bool) -> Jet a -> Jet a
+dropWhileM p (Jet f) = Jet \stop step initial -> do
   let stop' = stop . pairExtract
       step' (Pair DroppingNoMore s) a = do
         !s' <- step s a
         pure (Pair DroppingNoMore s')
-      step' (Pair StillDropping s) a
-        | p a =
-          pure (Pair StillDropping s)
-        | otherwise = do
-          !s' <- step s a
-          pure (Pair DroppingNoMore s')
+      step' (Pair StillDropping s) a = do
+        keepDropping <- p a
+        if
+            | keepDropping -> 
+              pure (Pair StillDropping s)
+            | otherwise -> do
+              !s' <- step s a
+              pure (Pair DroppingNoMore s')
       initial' = (Pair StillDropping initial)
   Pair _ final <- f stop' step' initial'
   pure final
@@ -176,14 +184,18 @@ take limit (Jet f) = Jet \stop step initial -> do
 data TakeState = StillTaking | TakingNoMore
 
 takeWhile :: (a -> Bool) -> Jet a -> Jet a
-takeWhile p (Jet f) = Jet \stop step initial -> do
+takeWhile p = takeWhileM (fmap pure p)
+
+takeWhileM :: (a -> IO Bool) -> Jet a -> Jet a
+takeWhileM p (Jet f) = Jet \stop step initial -> do
   let stop' (Pair TakingNoMore _) =
         True
       stop' (Pair StillTaking s) =
         stop s
-      step' (Pair internal s) a =
+      step' (Pair internal s) a = do
+        keepTaking <- p a
         if
-            | p a -> do
+            | keepTaking -> do
               s' <- step s a
               pure (Pair internal s')
             | otherwise ->
