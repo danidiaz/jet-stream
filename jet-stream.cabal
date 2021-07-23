@@ -23,7 +23,7 @@ license:            BSD-3-Clause
 license-file:       LICENSE
 author:             Daniel Diaz Carrete
 maintainer:         diaz_carrete@yahoo.com
-category:           Control
+category:           Streaming
 extra-source-files: 
     CHANGELOG.md, 
     README.md,
