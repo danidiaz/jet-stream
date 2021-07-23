@@ -10,6 +10,7 @@ module Jet (
         J.drop,
         J.dropWhile,
         J.take,
+        J.takeWhile,
         -- * Control operations
         J.control,
         J.control_,

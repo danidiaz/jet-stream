@@ -189,7 +189,7 @@ takeWhile p (Jet f) = Jet \stop step initial -> do
   Pair _ final <- f stop' step' initial'
   pure final
 
--- TBD: takeWhile
+
 
 control :: forall s a resource. (forall x. (resource -> IO x) -> IO x) -> Jet resource
 control f =
