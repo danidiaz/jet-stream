@@ -50,6 +50,7 @@ module Jet (
         -- * Folding Jets
         J.fold,
         J.foldIO,
+        -- * Text utils
     ) where
 
 import Jet.Internal (Jet)

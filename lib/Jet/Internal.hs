@@ -26,6 +26,13 @@ import Unsafe.Coerce qualified
 import System.IO (Handle, IOMode)
 import System.IO qualified
 
+import Data.Text (Text)
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as T
+import Data.Text.Encoding.Error qualified as T
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as B
+
 newtype Jet a = Jet {
         -- | Go through the elements produced by a 'Jet', while keeping an
         -- state @s@ and possibly performing some effect.
@@ -294,15 +301,15 @@ filterIO p (Jet f) = Jet \stop step initial -> do
 -- One difference with 'Data.Traversable.mapAccumL' is that the current value
 -- of the accumulator is yielded along with each element, instead of only
 -- returning the final value at the end.
-mapAccum :: (a -> b -> (a, c)) -> a -> Jet b -> Jet (a, c)
+mapAccum :: (a -> b -> (a, c)) -> a -> Jet b -> Jet c
 mapAccum stepAcc = mapAccumIO (fmap (fmap pure) stepAcc)
 
-mapAccumIO :: (a -> b -> IO (a, c)) -> a -> Jet b -> Jet (a, c)
+mapAccumIO :: (a -> b -> IO (a, c)) -> a -> Jet b -> Jet c
 mapAccumIO stepAcc initialAcc (Jet f) = Jet \stop step initial -> do
   let stop' = stop . pairExtract
       step' (Pair acc s) b = do
-        pair@(acc', _) <- stepAcc acc b
-        !s' <- step s pair
+        (acc', c) <- stepAcc acc b
+        !s' <- step s c
         pure (Pair acc' s')
       initial' = Pair initialAcc initial
   Pair _ final <- f stop' step' initial'
@@ -386,3 +393,39 @@ foldIO (Jet f) step initialIO coda = do
   initial <- initialIO
   r <- f (const False) step initial
   coda r
+
+-- decodeUtf8 :: Jet ByteString -> Jet (ByteString -> T.Decoding, Text)
+-- decodeUtf8 = mapAccumIO stepAcc next0
+--   where 
+--     next0 = 
+--         let T.Some _ _ g = T.streamDecodeUtf8 B.empty
+--          in g
+--     stepAcc :: (ByteString -> T.Decoding) 
+--             -> ByteString 
+--             -> IO (ByteString -> T.Decoding, Text)
+--     stepAcc next bytes = do
+--         let T.Some !text _ !next' = T.streamDecodeUtf8 bytes
+--          in pure (next', text)
+        
+-- lines :: Handle -> Jet Text
+-- lines handle = Jet \stop step initial -> do
+--   let stop' (Pair [] _) = True
+--       stop' (Pair _ s) = stop s
+--       step' (Pair (ioa : ioas) s) b = do
+--         a <- ioa
+--         z <- zf a b
+--         !s' <- step s z
+--         pure (Pair ioas s')
+--       step' (Pair [] _) _ = error "never happens"
+--       initial' = Pair ioas0 initial
+--   Pair _ final <- f stop' step' initial'
+--   -- check the internal state here!
+--   pure final
+    
+
+    
+
+
+
+
+

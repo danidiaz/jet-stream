@@ -41,6 +41,8 @@ library
     exposed-modules:  Jet
                       Jet.Internal
     build-depends:    
+        bytestring,
+        text
     hs-source-dirs:   lib
 
 test-suite tests
