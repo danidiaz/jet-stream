@@ -3,7 +3,7 @@ module Jet (
         -- * The Jet type
         Jet,
         J.runJet,
-        J.exhaustJet,
+        J.exhaust,
         J.effects,
         -- * Building Jets
         J.each,

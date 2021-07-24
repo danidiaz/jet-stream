@@ -42,11 +42,11 @@ newtype Jet a = Jet {
 -- | Like 'runJet', but goes through all elements produced by the 'Jet'.
 --
 -- Equivalent to @runJet (const False)@.
-exhaustJet :: forall a. Jet a -> forall s. (s -> a -> IO s) -> s -> IO s
-exhaustJet j = runJet j (const False)
+exhaust :: forall a. Jet a -> forall s. (s -> a -> IO s) -> s -> IO s
+exhaust j = runJet j (const False)
 
 effects :: Jet a -> IO ()
-effects j = exhaustJet j (\() _ -> pure ()) ()
+effects j = exhaust j (\() _ -> pure ()) ()
 
 instance Applicative Jet where
   pure i = Jet \stop step initial ->
