@@ -17,11 +17,13 @@ module Jet (
         -- * List-like functions
         J.toList,
         J.length,
+        J.filter,
+        J.filterIO,
+        J.take,
+        J.takeWhileIO,
         J.drop,
         J.dropWhile,
         J.dropWhileIO,
-        J.take,
-        J.takeWhileIO,
         J.mapAccum,
         J.mapAccumIO,
         -- * Zips

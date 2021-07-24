@@ -21,7 +21,7 @@ import Control.Monad.IO.Class
 import Control.Exception
 import Data.Foldable qualified
 import Data.Foldable (for_)
-import Prelude hiding (drop, dropWhile, fold, take, takeWhile, unfold, zip, zipWith)
+import Prelude hiding (filter, drop, dropWhile, fold, take, takeWhile, unfold, zip, zipWith, filterM)
 import Unsafe.Coerce qualified
 import System.IO (Handle, IOMode)
 import System.IO qualified
@@ -250,6 +250,21 @@ takeWhileIO p (Jet f) = Jet \stop step initial -> do
       initial' = Pair StillTaking initial
   Pair _ final <- f stop' step' initial'
   pure final
+
+filter :: (a -> Bool) -> Jet a -> Jet a
+filter p = filterIO (fmap pure p)
+
+filterIO :: (a -> IO Bool) -> Jet a -> Jet a
+filterIO p (Jet f) = Jet \stop step initial -> do
+  let step' s a = do
+        shouldPass <- p a
+        if
+            | shouldPass -> do
+              !s' <- step s a
+              pure s'
+            | otherwise ->
+              pure s
+  f stop step' initial
 
 -- | Behaves like a combination of 'fmap' and 'foldl'; it applies a function to
 -- each element of a structure passing an accumulating parameter from left to right.
