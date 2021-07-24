@@ -4,6 +4,10 @@ module Jet (
         Jet,
         -- * Building Jets
         J.each,
+        J.repeat,
+        J.repeatM,
+        J.replicate,
+        J.replicateM,
         J.iterate,
         J.iterateM,
         J.unfold,

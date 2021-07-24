@@ -13,10 +13,10 @@
 module Jet.Internal where
 
 import Control.Applicative
-import Control.Monad hiding (zipWithM)
+import Control.Monad hiding (replicateM, zipWithM)
 import Control.Monad.IO.Class
 import Data.Foldable (for_, toList)
-import Prelude hiding (unfold,take,takeWhile,drop, dropWhile, fold, foldM, zip, zipWith)
+import Prelude hiding (drop, dropWhile, fold, foldM, take, takeWhile, unfold, zip, zipWith)
 
 newtype Jet a = Jet {runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s} deriving (Functor)
 
@@ -87,6 +87,27 @@ each (toList -> seed) = Jet \stop step ->
                   go xs s'
    in go seed
 
+repeat :: a -> Jet a
+repeat a = repeatM (pure a)
+
+repeatM :: IO a -> Jet a
+repeatM ioa = Jet \stop step -> do
+  let go s =
+        if
+            | stop s ->
+              pure s
+            | otherwise -> do
+              a <- ioa
+              !s' <- step s a
+              go s'
+  go
+
+replicate :: Int -> a -> Jet a
+replicate n a = replicateM n (pure a)
+
+replicateM :: Int -> IO a -> Jet a
+replicateM n ioa = take n (repeatM ioa)
+
 iterate :: (a -> a) -> a -> Jet a
 iterate h = iterateM (fmap pure h)
 
@@ -98,7 +119,7 @@ iterateM h a0 = Jet \stop step ->
               pure s
             | otherwise -> do
               !s' <- step s a
-              !a' <- h a 
+              !a' <- h a
               go a' s'
    in go a0
 
@@ -145,7 +166,7 @@ pairExtract (Pair _ b) = b
 
 pairEnv (Pair a _) = a
 
--- fromTuple :: (a, b) -> Pair a b 
+-- fromTuple :: (a, b) -> Pair a b
 -- fromTuple (a, b) -> Pair a b
 
 drop :: Int -> Jet a -> Jet a
@@ -165,7 +186,7 @@ drop limit (Jet f) = Jet \stop step initial -> do
 data DropState = StillDropping | DroppingNoMore
 
 dropWhile :: (a -> Bool) -> Jet a -> Jet a
-dropWhile p  = dropWhileM (fmap pure p)
+dropWhile p = dropWhileM (fmap pure p)
 
 dropWhileM :: (a -> IO Bool) -> Jet a -> Jet a
 dropWhileM p (Jet f) = Jet \stop step initial -> do
@@ -176,7 +197,7 @@ dropWhileM p (Jet f) = Jet \stop step initial -> do
       step' (Pair StillDropping s) a = do
         keepDropping <- p a
         if
-            | keepDropping -> 
+            | keepDropping ->
               pure (Pair StillDropping s)
             | otherwise -> do
               !s' <- step s a
@@ -227,34 +248,32 @@ takeWhileM p (Jet f) = Jet \stop step initial -> do
 -- One difference with 'Data.Traversable.mapAccumL' is that the current value
 -- of the accumulator is yielded along with each element, instead of only
 -- returning the final value at the end.
-mapAccum :: (a -> b -> (a, c)) -> a -> Jet b -> Jet (a,c)
+mapAccum :: (a -> b -> (a, c)) -> a -> Jet b -> Jet (a, c)
 mapAccum stepAcc = mapAccumM (fmap (fmap pure) stepAcc)
 
-mapAccumM :: (a -> b -> IO (a, c)) -> a -> Jet b -> Jet (a,c)
+mapAccumM :: (a -> b -> IO (a, c)) -> a -> Jet b -> Jet (a, c)
 mapAccumM stepAcc initialAcc (Jet f) = Jet \stop step initial -> do
-    let 
-      stop' = stop . pairExtract
+  let stop' = stop . pairExtract
       step' (Pair acc s) b = do
-        pair@(acc', _) <- stepAcc acc b 
+        pair@(acc', _) <- stepAcc acc b
         !s' <- step s pair
         pure (Pair acc' s')
       initial' = Pair initialAcc initial
-    Pair _ final <- f stop' step' initial'
-    pure final
+  Pair _ final <- f stop' step' initial'
+  pure final
 
-zip :: [a] -> Jet b -> Jet (a,b)
+zip :: [a] -> Jet b -> Jet (a, b)
 zip = zipWith (,)
 
 zipWith :: (a -> b -> c) -> [a] -> Jet b -> Jet c
 zipWith zf as0 = zipWithM (fmap (fmap pure) zf) (map pure as0)
 
-zipM :: [IO a] -> Jet b -> Jet (a,b)
-zipM = zipWithM (\x y -> pure (x,y))
+zipM :: [IO a] -> Jet b -> Jet (a, b)
+zipM = zipWithM (\x y -> pure (x, y))
 
 zipWithM :: (a -> b -> IO c) -> [IO a] -> Jet b -> Jet c
 zipWithM zf ioas0 (Jet f) = Jet \stop step initial -> do
-    let 
-      stop' (Pair [] _) = True
+  let stop' (Pair [] _) = True
       stop' (Pair _ s) = stop s
       step' (Pair (ioa : ioas) s) b = do
         a <- ioa
@@ -263,8 +282,8 @@ zipWithM zf ioas0 (Jet f) = Jet \stop step initial -> do
         pure (Pair ioas s')
       step' (Pair [] _) _ = error "never happens"
       initial' = Pair ioas0 initial
-    Pair _ final <- f stop' step' initial'
-    pure final
+  Pair _ final <- f stop' step' initial'
+  pure final
 
 control :: forall s a resource. (forall x. (resource -> IO x) -> IO x) -> Jet resource
 control f =
