@@ -1,5 +1,37 @@
 # jet-stream
 
+This is yet another streaming library for Haskell, created to scratch the
+following itches:
+
+- The main type is as simple as possible: the only type parameter is the type
+  of the yielded elements.
+
+- The `Monoid` / `Alternative` / `MonadPlus` methods perform concatenation,
+  just like with regular lists. The `Functor` `Applicative` and `Monad`
+  instances also resemble those of lists.
+
+- Typical "control" functions like `withFile`, `bracket`, `finally` and
+  `onError` are easy to integrate in a streaming pipeline. 
+
+- Compatible with the [foldl](https://hackage.haskell.org/package/foldl)
+  library for collector-like terminal operations. (All self-respecting
+  streaming libraries must have this.)
+
+In order to achieve those objectives, the following sacrifices have been made:
+
+- No flexibility in the underlying monad for the stream effects: it's always
+  `IO`.
+
+- Elements in a stream can't be "extracted" one by one in a pull-based way,
+  like you can do for example in
+  [streaming](https://hackage.haskell.org/package/streaming-0.2.3.0/docs/Streaming-Prelude.html#v:next).
+
+- You can't detect the "end" of a stream inside the stream itself.
+
+- Partly as a consequence of the above, grouping operations inside a stream are
+  not well supported.  You can, however, perform some form of grouping as a
+  terminal operation.
+
 ## Some close cousins
 
 - [turtle](https://hackage.haskell.org/package/turtle). The `Shell` type kinda
