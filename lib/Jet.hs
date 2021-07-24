@@ -13,6 +13,7 @@ module Jet (
         J.unfold,
         J.unfoldIO,
         J.untilEOF,
+        J.untilNothing,
         -- * List-like functions
         J.toList,
         J.length,

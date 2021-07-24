@@ -9,6 +9,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TupleSections #-}
 
 module Jet.Internal where
 
@@ -46,6 +47,7 @@ instance MonadIO Jet where
 
 instance Semigroup (Jet a) where
   Jet f1 <> Jet f2 = Jet \stop step s0 -> do
+    -- perhaps some of the stop checks are redundant, the first one in particular?
     if
         | stop s0 ->
           pure s0
@@ -120,6 +122,8 @@ iterateIO h a0 = Jet \stop step ->
               pure s
             | otherwise -> do
               !s' <- step s a
+              -- Me might be performing an extra useless action 
+              -- when combining iterateIO and limit.
               !a' <- h a
               go a' s'
    in go a0
@@ -161,6 +165,8 @@ untilEOF hIsEOF' hGetLine' handle = Jet \stop step ->
                     go s'
    in go
 
+untilNothing :: IO (Maybe a) -> Jet a
+untilNothing action = unfoldIO (\() -> fmap (fmap (,())) action) ()
 
 -- | Convert to a regular list. This breaks streaming.
 --
