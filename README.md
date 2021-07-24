@@ -28,9 +28,9 @@ In order to achieve those objectives, the following sacrifices have been made:
 
 - You can't detect the "end" of a stream inside the stream itself.
 
-- Partly as a consequence of the above, grouping operations inside a stream are
-  not well supported.  You can, however, perform some form of grouping as a
-  terminal operation.
+- Partly as a consequence of the previous point, grouping operations inside a
+  stream are not well supported.  You can, however, perform some form of
+  grouping as a terminal operation.
 
 ## Some close cousins
 
