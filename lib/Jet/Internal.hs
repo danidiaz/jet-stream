@@ -76,6 +76,7 @@ instance MonadFail Jet where
 
 each :: Foldable f => f a -> Jet a
 each (Data.Foldable.toList -> seed) = Jet \stop step ->
+  -- This could be done with Jet.unfold, but let's leave as it is.
   let go b s =
         if
             | stop s ->
@@ -94,16 +95,7 @@ repeat :: a -> Jet a
 repeat a = repeatIO (pure a)
 
 repeatIO :: IO a -> Jet a
-repeatIO ioa = Jet \stop step -> do
-  let go s =
-        if
-            | stop s ->
-              pure s
-            | otherwise -> do
-              a <- ioa
-              !s' <- step s a
-              go s'
-  go
+repeatIO action = untilNothing (fmap Just action)
 
 replicate :: Int -> a -> Jet a
 replicate n a = replicateIO n (pure a)
@@ -115,30 +107,19 @@ iterate :: (a -> a) -> a -> Jet a
 iterate h = iterateIO (fmap pure h)
 
 iterateIO :: (a -> IO a) -> a -> Jet a
-iterateIO h a0 = Jet \stop step ->
-  let go a s =
-        if
-            | stop s ->
-              pure s
-            | otherwise -> do
-              !s' <- step s a
-              -- Me might be performing an extra useless action 
-              -- when combining iterateIO and limit.
-              !a' <- h a
-              go a' s'
-   in go a0
+iterateIO h a = unfoldIO (fmap (fmap (\x -> Just (x,x))) h) a     
 
 unfold :: (b -> Maybe (a, b)) -> b -> Jet a
 unfold h = unfoldIO (fmap pure h)
 
 unfoldIO :: (b -> IO (Maybe (a, b))) -> b -> Jet a
-unfoldIO f seed = Jet \stop step ->
+unfoldIO h seed = Jet \stop step ->
   let go b s =
         if
             | stop s ->
               pure s
             | otherwise -> do
-              next <- f b
+              next <- h b
               case next of
                 Nothing ->
                   pure s
@@ -148,22 +129,14 @@ unfoldIO f seed = Jet \stop step ->
                   go b' s'
    in go seed
 
-untilEOF :: (h -> IO Bool) -> (h -> IO a) -> h -> Jet a
-untilEOF hIsEOF' hGetLine' handle = Jet \stop step ->
-  let go s =
-        if
-            | stop s -> do
-              pure s
-            | otherwise -> do
-              eof <- hIsEOF' handle
-              if
-                  | eof -> do
-                    pure s
-                  | otherwise -> do
-                    line <- hGetLine' handle
-                    s' <- step s line
-                    go s'
-   in go
+untilEOF :: (handle -> IO Bool) -> (handle -> IO a) -> handle -> Jet a
+untilEOF hIsEOF' hGetLine' handle = untilNothing do
+      eof <- hIsEOF' handle
+      if
+          | eof -> 
+            pure Nothing
+          | otherwise ->
+            Just <$> hGetLine' handle
 
 untilNothing :: IO (Maybe a) -> Jet a
 untilNothing action = unfoldIO (\() -> fmap (fmap (,())) action) ()
