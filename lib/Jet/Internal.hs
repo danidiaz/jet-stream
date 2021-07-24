@@ -26,7 +26,27 @@ import Unsafe.Coerce qualified
 import System.IO (Handle, IOMode)
 import System.IO qualified
 
-newtype Jet a = Jet {runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s} deriving (Functor)
+newtype Jet a = Jet {
+        -- | Go through the elements produced by a 'Jet', while keeping an
+        -- state @s@ and possibly performing some effect.
+        --
+        -- The caller is the one who chooses the type of the state @s@, and
+        -- must pass an initial value for it.
+        --
+        -- He must also provide a predicate on the state that informs the `Jet`
+        -- when to stop producing values: whenever the predicate returns
+        -- @True@.
+        runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
+    } deriving (Functor)
+
+-- | Like 'runJet', but goes through all elements produced by the 'Jet'.
+--
+-- Equivalent to @runJet (const False)@.
+exhaustJet :: forall a. Jet a -> forall s. (s -> a -> IO s) -> s -> IO s
+exhaustJet j = runJet j (const False)
+
+effects :: Jet a -> IO ()
+effects j = exhaustJet j (\() _ -> pure ()) ()
 
 instance Applicative Jet where
   pure i = Jet \stop step initial ->
