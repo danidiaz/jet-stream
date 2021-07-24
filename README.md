@@ -26,7 +26,8 @@ In order to achieve those objectives, the following sacrifices have been made:
   like you can do for example in
   [streaming](https://hackage.haskell.org/package/streaming-0.2.3.0/docs/Streaming-Prelude.html#v:next).
 
-- You can't detect the "end" of a stream inside the stream itself.
+- You can't detect the "end" of previous stream stages inside a downstream
+  stage.
 
 - Partly as a consequence of the previous point, grouping operations inside a
   stream are not well supported.  You can, however, perform some form of
