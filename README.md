@@ -36,11 +36,13 @@ In order to achieve those objectives, the following sacrifices have been made:
 ## Some close cousins
 
 - [turtle](https://hackage.haskell.org/package/turtle). The `Shell` type kinda
-  resembles `Jet`.
+  resembles `Jet`. One possible difference is that `Shell` doesn't seem to
+  provide a way for the `Shell` consumer to signal that no further values are
+  needed.
 
 - [Z.IO.BIO](https://hackage.haskell.org/package/Z-IO-1.0.0.0/docs/Z-IO-BIO.html)
   from [Z-IO](https://hackage.haskell.org/package/Z-IO). Like `Jet`, uses a
-  callback-transformation approach..
+  callback-transformation approach. 
 
 - The
   [Stream](https://docs.oracle.com/en/java/javase/16/docs/api/java.base/java/util/stream/Stream.html)
