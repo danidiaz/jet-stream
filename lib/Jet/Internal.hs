@@ -315,17 +315,17 @@ mapAccumIO stepAcc initialAcc (Jet f) = Jet \stop step initial -> do
   Pair _ final <- f stop' step' initial'
   pure final
 
-zip :: [a] -> Jet b -> Jet (a, b)
+zip :: Foldable f => f a -> Jet b -> Jet (a, b)
 zip = zipWith (,)
 
-zipWith :: (a -> b -> c) -> [a] -> Jet b -> Jet c
-zipWith zf as0 = zipWithIO (fmap (fmap pure) zf) (map pure as0)
+zipWith :: Foldable f => (a -> b -> c) -> f a -> Jet b -> Jet c
+zipWith zf (Data.Foldable.toList -> as0) = zipWithIO (fmap (fmap pure) zf) (fmap pure as0)
 
-zipIO :: [IO a] -> Jet b -> Jet (a, b)
+zipIO :: Foldable f => f (IO a) -> Jet b -> Jet (a, b)
 zipIO = zipWithIO (\x y -> pure (x, y))
 
-zipWithIO :: (a -> b -> IO c) -> [IO a] -> Jet b -> Jet c
-zipWithIO zf ioas0 (Jet f) = Jet \stop step initial -> do
+zipWithIO :: Foldable f => (a -> b -> IO c) -> f (IO a) -> Jet b -> Jet c
+zipWithIO zf (Data.Foldable.toList -> ioas0) (Jet f) = Jet \stop step initial -> do
   let stop' (Pair [] _) = True
       stop' (Pair _ s) = stop s
       step' (Pair (ioa : ioas) s) b = do
@@ -394,18 +394,24 @@ foldIO (Jet f) step initialIO coda = do
   r <- f (const False) step initial
   coda r
 
--- decodeUtf8 :: Jet ByteString -> Jet (ByteString -> T.Decoding, Text)
--- decodeUtf8 = mapAccumIO stepAcc next0
---   where 
---     next0 = 
---         let T.Some _ _ g = T.streamDecodeUtf8 B.empty
---          in g
---     stepAcc :: (ByteString -> T.Decoding) 
---             -> ByteString 
---             -> IO (ByteString -> T.Decoding, Text)
---     stepAcc next bytes = do
---         let T.Some !text _ !next' = T.streamDecodeUtf8 bytes
---          in pure (next', text)
+decodeUtf8 :: Jet ByteString -> Jet Text
+decodeUtf8 (Jet f) = Jet \stop step initial -> do
+    let stop' = stop . pairExtract
+        step' (Pair leftovers s) bytes = do
+            T.Some !text !_ !leftovers' <- pure $ T.streamDecodeUtf8 bytes
+            !s' <- step s text
+            pure (Pair leftovers' s')
+        initial' = Pair leftovers0 initial
+    Pair leftovers final <-  f stop' step' initial'  
+    T.Some !_ !bytes !_ <- pure $ T.streamDecodeUtf8 B.empty
+    if | B.null bytes -> 
+         throwIO (T.DecodeError "Unconsumed leftovers at end." Nothing)
+       | otherwise -> 
+         pure final
+  where 
+    leftovers0 = 
+        let T.Some _ _ g = T.streamDecodeUtf8 B.empty
+         in g
         
 -- lines :: Handle -> Jet Text
 -- lines handle = Jet \stop step initial -> do
