@@ -290,7 +290,7 @@ zipWithIO zf ioas0 (Jet f) = Jet \stop step initial -> do
   Pair _ final <- f stop' step' initial'
   pure final
 
-control :: forall s a resource. (forall x. (resource -> IO x) -> IO x) -> Jet resource
+control :: forall resource. (forall x. (resource -> IO x) -> IO x) -> Jet resource
 control f =
   Jet \stop step initial ->
     if
@@ -299,7 +299,7 @@ control f =
         | otherwise -> do
           f (step initial)
 
-control_ :: forall s a. (forall x. IO x -> IO x) -> Jet ()
+control_ :: (forall x. IO x -> IO x) -> Jet ()
 control_ f =
   Jet \stop step initial ->
     if
