@@ -14,6 +14,8 @@ module Jet (
         J.unfoldM,
         J.untilEOF,
         -- * List-like functions
+        J.toList,
+        J.length,
         J.drop,
         J.dropWhile,
         J.take,

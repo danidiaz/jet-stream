@@ -15,7 +15,8 @@ module Jet.Internal where
 import Control.Applicative
 import Control.Monad hiding (replicateM, zipWithM)
 import Control.Monad.IO.Class
-import Data.Foldable (for_, toList)
+import Data.Foldable qualified
+import Data.Foldable (for_)
 import Prelude hiding (drop, dropWhile, fold, foldM, take, takeWhile, unfold, zip, zipWith)
 
 newtype Jet a = Jet {runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s} deriving (Functor)
@@ -72,7 +73,7 @@ instance MonadFail Jet where
   fail _ = mzero
 
 each :: Foldable f => f a -> Jet a
-each (toList -> seed) = Jet \stop step ->
+each (Data.Foldable.toList -> seed) = Jet \stop step ->
   let go b s =
         if
             | stop s ->
@@ -159,6 +160,31 @@ untilEOF hIsEOF' hGetLine' handle = Jet \stop step ->
                     s' <- step s line
                     go s'
    in go
+
+
+-- | Convert to a regular list. This breaks streaming.
+--
+-- Equivalent to 
+--
+-- > Control.Foldl.purely Jet.fold Control.Foldl.list
+--
+-- which is more composable.
+toList :: Jet a -> IO [a]
+toList (Jet f) = do
+    as <- f (const False) (\xs x -> pure (x : xs)) []
+    pure (reverse as)
+
+-- | Returns the number of elements yielded by the 'Jet'.
+--
+-- Equivalent to 
+--
+-- > Control.Foldl.purely Jet.fold Control.Foldl.length
+--
+-- which is more composable.
+length :: Jet a -> IO Int
+length (Jet f) = do
+    l <- f (const False) (\s _ -> pure (succ s)) 0
+    pure l
 
 data Pair a b = Pair !a !b
 
