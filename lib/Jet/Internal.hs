@@ -11,15 +11,20 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE LinearTypes #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Jet.Internal where
 
 import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Exception
 import Data.Foldable qualified
 import Data.Foldable (for_)
 import Prelude hiding (drop, dropWhile, fold, take, takeWhile, unfold, zip, zipWith)
+import Unsafe.Coerce qualified
+import System.IO (Handle, IOMode)
+import System.IO qualified
 
 newtype Jet a = Jet {runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s} deriving (Functor)
 
@@ -291,6 +296,27 @@ zipWithIO zf ioas0 (Jet f) = Jet \stop step initial -> do
   Pair _ final <- f stop' step' initial'
   pure final
 
+
+withFile :: FilePath -> IOMode -> Jet Handle
+withFile path ioMode = control @Handle (unsafeCoerceControl @Handle (System.IO.withFile path ioMode))
+
+bracket :: forall a b . IO a -> (a -> IO b) -> Jet a
+bracket allocate free = control @a (unsafeCoerceControl @a (Control.Exception.bracket allocate free))
+
+bracket_ :: forall a b . IO a -> IO b -> Jet ()
+bracket_ allocate free = control_ (unsafeCoerceControl_ (Control.Exception.bracket_ allocate free))
+
+bracketOnError :: forall a b . IO a -> (a -> IO b) -> Jet a
+bracketOnError allocate free = control @a (unsafeCoerceControl @a (Control.Exception.bracketOnError allocate free))
+
+finally :: IO a -> Jet ()
+finally afterward =
+    control_ (unsafeCoerceControl_ (flip Control.Exception.finally afterward))
+
+onException :: IO a -> Jet ()
+onException afterward =
+    control_ (unsafeCoerceControl_ (flip Control.Exception.onException afterward))
+
 control :: forall resource. (forall x. (resource -> IO x) %1 -> IO x) -> Jet resource
 control f =
   Jet \stop step initial ->
@@ -308,6 +334,12 @@ control_ f =
           pure initial
         | otherwise -> do
           f (step initial ())
+
+unsafeCoerceControl :: forall resource . (forall x. (resource -> IO x) -> IO x) -> (forall x. (resource -> IO x) %1 -> IO x)
+unsafeCoerceControl f = Unsafe.Coerce.unsafeCoerce f
+
+unsafeCoerceControl_ :: (forall x. IO x -> IO x) -> (forall x. IO x %1 -> IO x)
+unsafeCoerceControl_ f = Unsafe.Coerce.unsafeCoerce f
 
 fold :: Jet a -> (s -> a -> s) -> s -> (s -> r) -> IO r
 fold (Jet f) step initial coda = do

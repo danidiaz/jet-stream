@@ -31,8 +31,17 @@ module Jet (
         J.zipIO,
         J.zipWithIO,
         -- * Control operations
+        J.withFile, 
+        J.bracket,
+        J.bracket_,
+        J.bracketOnError,
+        J.finally,
+        J.onException, 
+        -- ** Building your own
         J.control,
+        J.unsafeCoerceControl,
         J.control_,
+        J.unsafeCoerceControl_,
         -- * Folding Jets
         J.fold,
         J.foldIO,
