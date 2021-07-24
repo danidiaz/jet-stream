@@ -13,11 +13,11 @@
 module Jet.Internal where
 
 import Control.Applicative
-import Control.Monad hiding (replicateM, zipWithM)
+import Control.Monad
 import Control.Monad.IO.Class
 import Data.Foldable qualified
 import Data.Foldable (for_)
-import Prelude hiding (drop, dropWhile, fold, foldM, take, takeWhile, unfold, zip, zipWith)
+import Prelude hiding (drop, dropWhile, fold, take, takeWhile, unfold, zip, zipWith)
 
 newtype Jet a = Jet {runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s} deriving (Functor)
 
@@ -89,10 +89,10 @@ each (Data.Foldable.toList -> seed) = Jet \stop step ->
    in go seed
 
 repeat :: a -> Jet a
-repeat a = repeatM (pure a)
+repeat a = repeatIO (pure a)
 
-repeatM :: IO a -> Jet a
-repeatM ioa = Jet \stop step -> do
+repeatIO :: IO a -> Jet a
+repeatIO ioa = Jet \stop step -> do
   let go s =
         if
             | stop s ->
@@ -104,16 +104,16 @@ repeatM ioa = Jet \stop step -> do
   go
 
 replicate :: Int -> a -> Jet a
-replicate n a = replicateM n (pure a)
+replicate n a = replicateIO n (pure a)
 
-replicateM :: Int -> IO a -> Jet a
-replicateM n ioa = take n (repeatM ioa)
+replicateIO :: Int -> IO a -> Jet a
+replicateIO n ioa = take n (repeatIO ioa)
 
 iterate :: (a -> a) -> a -> Jet a
-iterate h = iterateM (fmap pure h)
+iterate h = iterateIO (fmap pure h)
 
-iterateM :: (a -> IO a) -> a -> Jet a
-iterateM h a0 = Jet \stop step ->
+iterateIO :: (a -> IO a) -> a -> Jet a
+iterateIO h a0 = Jet \stop step ->
   let go a s =
         if
             | stop s ->
@@ -125,10 +125,10 @@ iterateM h a0 = Jet \stop step ->
    in go a0
 
 unfold :: (b -> Maybe (a, b)) -> b -> Jet a
-unfold h = unfoldM (fmap pure h)
+unfold h = unfoldIO (fmap pure h)
 
-unfoldM :: (b -> IO (Maybe (a, b))) -> b -> Jet a
-unfoldM f seed = Jet \stop step ->
+unfoldIO :: (b -> IO (Maybe (a, b))) -> b -> Jet a
+unfoldIO f seed = Jet \stop step ->
   let go b s =
         if
             | stop s ->
@@ -212,10 +212,10 @@ drop limit (Jet f) = Jet \stop step initial -> do
 data DropState = StillDropping | DroppingNoMore
 
 dropWhile :: (a -> Bool) -> Jet a -> Jet a
-dropWhile p = dropWhileM (fmap pure p)
+dropWhile p = dropWhileIO (fmap pure p)
 
-dropWhileM :: (a -> IO Bool) -> Jet a -> Jet a
-dropWhileM p (Jet f) = Jet \stop step initial -> do
+dropWhileIO :: (a -> IO Bool) -> Jet a -> Jet a
+dropWhileIO p (Jet f) = Jet \stop step initial -> do
   let stop' = stop . pairExtract
       step' (Pair DroppingNoMore s) a = do
         !s' <- step s a
@@ -246,10 +246,10 @@ take limit (Jet f) = Jet \stop step initial -> do
 data TakeState = StillTaking | TakingNoMore
 
 takeWhile :: (a -> Bool) -> Jet a -> Jet a
-takeWhile p = takeWhileM (fmap pure p)
+takeWhile p = takeWhileIO (fmap pure p)
 
-takeWhileM :: (a -> IO Bool) -> Jet a -> Jet a
-takeWhileM p (Jet f) = Jet \stop step initial -> do
+takeWhileIO :: (a -> IO Bool) -> Jet a -> Jet a
+takeWhileIO p (Jet f) = Jet \stop step initial -> do
   let stop' (Pair TakingNoMore _) =
         True
       stop' (Pair StillTaking s) =
@@ -275,10 +275,10 @@ takeWhileM p (Jet f) = Jet \stop step initial -> do
 -- of the accumulator is yielded along with each element, instead of only
 -- returning the final value at the end.
 mapAccum :: (a -> b -> (a, c)) -> a -> Jet b -> Jet (a, c)
-mapAccum stepAcc = mapAccumM (fmap (fmap pure) stepAcc)
+mapAccum stepAcc = mapAccumIO (fmap (fmap pure) stepAcc)
 
-mapAccumM :: (a -> b -> IO (a, c)) -> a -> Jet b -> Jet (a, c)
-mapAccumM stepAcc initialAcc (Jet f) = Jet \stop step initial -> do
+mapAccumIO :: (a -> b -> IO (a, c)) -> a -> Jet b -> Jet (a, c)
+mapAccumIO stepAcc initialAcc (Jet f) = Jet \stop step initial -> do
   let stop' = stop . pairExtract
       step' (Pair acc s) b = do
         pair@(acc', _) <- stepAcc acc b
@@ -292,13 +292,13 @@ zip :: [a] -> Jet b -> Jet (a, b)
 zip = zipWith (,)
 
 zipWith :: (a -> b -> c) -> [a] -> Jet b -> Jet c
-zipWith zf as0 = zipWithM (fmap (fmap pure) zf) (map pure as0)
+zipWith zf as0 = zipWithIO (fmap (fmap pure) zf) (map pure as0)
 
-zipM :: [IO a] -> Jet b -> Jet (a, b)
-zipM = zipWithM (\x y -> pure (x, y))
+zipIO :: [IO a] -> Jet b -> Jet (a, b)
+zipIO = zipWithIO (\x y -> pure (x, y))
 
-zipWithM :: (a -> b -> IO c) -> [IO a] -> Jet b -> Jet c
-zipWithM zf ioas0 (Jet f) = Jet \stop step initial -> do
+zipWithIO :: (a -> b -> IO c) -> [IO a] -> Jet b -> Jet c
+zipWithIO zf ioas0 (Jet f) = Jet \stop step initial -> do
   let stop' (Pair [] _) = True
       stop' (Pair _ s) = stop s
       step' (Pair (ioa : ioas) s) b = do
@@ -334,8 +334,8 @@ fold (Jet f) step initial coda = do
   r <- f (const False) (fmap (fmap pure) step) initial
   pure $ coda r
 
-foldM :: Jet a -> (s -> a -> IO s) -> IO s -> (s -> IO r) -> IO r
-foldM (Jet f) step initialM coda = do
-  initial <- initialM
+foldIO :: Jet a -> (s -> a -> IO s) -> IO s -> (s -> IO r) -> IO r
+foldIO (Jet f) step initialIO coda = do
+  initial <- initialIO
   r <- f (const False) step initial
   coda r
