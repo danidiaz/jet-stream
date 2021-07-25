@@ -15,6 +15,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Jet.Internal where
 
@@ -452,20 +453,20 @@ chunkSize = \case
     ChunkSize1M -> 1048576
     ChunkSize2M -> 2097152
 
-class ToJet source element where
-    toJet :: source -> Jet element 
+class ToJet a source where
+    jet :: source -> Jet a 
 
 bytes :: ChunkSize -> Handle -> Jet ByteString
 bytes (chunkSize -> count) handle =
     untilEOF System.IO.hIsEOF (flip B.hGetSome count) handle
 
-instance ToJet Handle ByteString where
-    toJet = bytes DefaultChunkSize
+instance ToJet ByteString Handle where
+    jet = bytes DefaultChunkSize
 
 newtype BinaryFile = BinaryFile FilePath
 
-instance ToJet BinaryFile ByteString where
-    toJet (BinaryFile path) = do
+instance ToJet ByteString BinaryFile where
+    jet (BinaryFile path) = do
         handle <- withFile path 
         bytes DefaultChunkSize handle
 
@@ -495,27 +496,36 @@ decodeUtf8 (Jet f) = Jet \stop step initial -> do
 encodeUtf8 :: Jet Text -> Jet ByteString
 encodeUtf8 = fmap T.encodeUtf8
 
-newtype Line = Line { lineText :: Text }
-    deriving stock Show 
-    deriving newtype (Eq,Ord)
+newtype Line = Line_ Text
+    deriving newtype (Eq,Ord,Show)
+
+-- https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/pattern_synonyms.html
+pattern Line text <- text
+
+lineToText :: Line -> Text
+lineToText (Line_ text) = text
+
+textToLine :: Text -> Line
+textToLine text | Just _ <- T.find (=='\n') text = error "text for a line can't contain newlines!"
+textToLine text = Line_ text
 
 isEmptyLine :: Line -> Bool
-isEmptyLine (Line text) = T.null text 
+isEmptyLine (Line_ text) = T.null text 
 
 emptyLine :: Line
-emptyLine = Line T.empty
+emptyLine = Line_ T.empty
 
 newtype Utf8TextFile = Utf8TextFile FilePath
 
-instance ToJet Utf8TextFile Line where
-    toJet (Utf8TextFile path) = do
+instance ToJet Line Utf8TextFile where
+    jet (Utf8TextFile path) = do
         handle <- withFile path
-        toJet (Utf8TextHandle handle)
+        jet (Utf8TextHandle handle)
 
 newtype Utf8TextHandle = Utf8TextHandle Handle
 
-instance ToJet Utf8TextHandle Line where
-    toJet (Utf8TextHandle handle) =
+instance ToJet Line Utf8TextHandle where
+    jet (Utf8TextHandle handle) =
           lines 
         . decodeUtf8 
         $ bytes DefaultChunkSize handle
@@ -524,7 +534,7 @@ lines :: Jet Text -> Jet Line
 lines (Jet f) = Jet \stop step initial -> do
     let stop' = stop . pairExtract
         step' (Pair lineUnderConstruction s) text = do
-            linesInCurrentBlock <- pure $ Line <$> T.lines text
+            linesInCurrentBlock <- pure $ Line_ <$> T.lines text
             if 
                 | T.null text -> 
                     pure (Pair lineUnderConstruction s)
@@ -535,7 +545,7 @@ lines (Jet f) = Jet \stop step initial -> do
                     -- at this point, we know that linesInCurrentBlock can be non-empty
                     s' <- downstream stop step (init linesInCurrentBlock) s
                     pure (Pair (last linesInCurrentBlock) s')
-        initial' = Pair (Line T.empty) initial
+        initial' = Pair (Line_ T.empty) initial
     Pair lineUnderConstruction final <- f stop' step' initial'  
     if
         | stop final -> 
@@ -557,30 +567,32 @@ downstream stop step = go
             s' <- step s x
             go xs s'
 
--- General sinks
+-- General funnels
 
-class Sink destination element where
-    sink :: destination -> Jet element -> IO ()
+type Funnel a = Jet a -> IO ()
 
-instance Sink BinaryFile ByteString where
-    sink (BinaryFile path) j = System.IO.withFile path System.IO.WriteMode \handle ->
+class ToFunnel a destination where
+    funnel :: destination -> Funnel a
+
+instance ToFunnel ByteString BinaryFile where
+    funnel (BinaryFile path) j = System.IO.withFile path System.IO.WriteMode \handle ->
         for_ j (B.hPut handle)
 
-instance Sink Handle ByteString where
-    sink handle j = for_ j (B.hPut handle)
+instance ToFunnel ByteString Handle where
+    funnel handle j = for_ j (B.hPut handle)
 
-instance Sink Utf8TextFile Line where
-    sink (Utf8TextFile path) j =  
+instance ToFunnel Line Utf8TextFile where
+    funnel (Utf8TextFile path) j =  
         System.IO.withFile path System.IO.WriteMode \handle -> 
               traverse_ (B.hPut handle)
             . encodeUtf8
             . intersperse (T.singleton '\n') 
-            $ fmap lineText j 
+            $ fmap lineToText j 
 
-instance Sink Utf8TextHandle Line where
-    sink (Utf8TextHandle handle) j =  
+instance ToFunnel Line Utf8TextHandle where
+    funnel (Utf8TextHandle handle) j =  
               traverse_ (B.hPut handle)
             . encodeUtf8
             . intersperse (T.singleton '\n') 
-            $ fmap lineText j 
+            $ fmap lineToText j 
 

@@ -55,16 +55,19 @@ module Jet (
         J.foldIO,
         -- * Conversion helpers
         J.ToJet (..),
-        J.Sink(..),
+        J.Funnel (..),
+        J.ToFunnel(..),
         -- * Byte utils
         J.bytes,
         J.BinaryFile(..),
         J.ChunkSize (..),
-        -- * Text utils
+        -- * Text and Line utils
         J.decodeUtf8,
         J.encodeUtf8,
         J.lines,
-        J.Line (..),
+        J.Line (Line),
+        J.lineToText,
+        J.textToLine,
         J.Utf8TextFile (..),
         J.Utf8TextHandle (..),
     ) where
