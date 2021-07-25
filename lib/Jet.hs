@@ -63,7 +63,7 @@ module Jet (
         -- * Text utils
         J.decodeUtf8,
         J.encodeUtf8,
-        lines,
+        J.lines,
         J.Line (..),
         J.Utf8TextFile (..),
         J.Utf8TextHandle (..),
