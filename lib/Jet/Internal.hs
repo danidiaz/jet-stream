@@ -28,9 +28,11 @@ import Prelude hiding (traverse_, for_, filter, drop, dropWhile, fold, take, tak
 import Unsafe.Coerce qualified
 import System.IO (Handle, IOMode)
 import System.IO qualified
+import Data.Function ((&))
 
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.IO qualified as T
 import Data.Text.Encoding qualified as T
 import Data.Text.Encoding.Error qualified as T
 import Data.ByteString (ByteString)
@@ -63,6 +65,9 @@ traverse_  = flip for_
 
 effects :: Jet a -> IO ()
 effects = traverse_ pure
+
+-- flatMap :: (a -> Jet b) -> Jet a -> Jet b
+-- flatMap = (=<<)
 
 instance Applicative Jet where
   pure i = Jet \stop step initial ->
@@ -584,15 +589,25 @@ instance ToFunnel ByteString Handle where
 instance ToFunnel Line Utf8TextFile where
     funnel (Utf8TextFile path) j =  
         System.IO.withFile path System.IO.WriteMode \handle -> 
-              traverse_ (B.hPut handle)
-            . encodeUtf8
-            . intersperse (T.singleton '\n') 
-            $ fmap lineToText j 
+            j & fmap lineToText
+              & intersperse (T.singleton '\n') 
+              & encodeUtf8
+              & traverse_ (B.hPut handle)
 
 instance ToFunnel Line Utf8TextHandle where
     funnel (Utf8TextHandle handle) j =  
-              traverse_ (B.hPut handle)
-            . encodeUtf8
-            . intersperse (T.singleton '\n') 
-            $ fmap lineToText j 
+        j & fmap lineToText
+          & intersperse (T.singleton '\n') 
+          & encodeUtf8
+          & traverse_ (B.hPut handle)
 
+data StdStream = StdOut | StdErr deriving Show
+
+stdStreamToHandle :: StdStream -> Handle
+stdStreamToHandle StdOut = System.IO.stdout
+stdStreamToHandle StdErr = System.IO.stderr
+
+instance ToFunnel Line StdStream where
+    funnel (stdStreamToHandle -> handle) j =
+        j & fmap lineToText
+          & traverse_ T.putStrLn
