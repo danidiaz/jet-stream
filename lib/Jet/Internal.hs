@@ -455,6 +455,10 @@ chunkSize = \case
 class HasBytes source where
     bytes :: ChunkSize -> source -> Jet ByteString
 
+bytes' :: ChunkSize -> Handle -> Jet ByteString
+bytes' (chunkSize -> count) handle =
+    untilEOF System.IO.hIsEOF (flip B.hGetSome count) handle
+
 instance HasBytes Handle where
     bytes (chunkSize -> byteCount) handle = 
         untilEOF System.IO.hIsEOF (flip B.hGetSome byteCount) handle
