@@ -14,6 +14,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Jet.Internal where
 
@@ -22,8 +23,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Exception
 import Data.Foldable qualified
-import Data.Foldable (for_)
-import Prelude hiding (filter, drop, dropWhile, fold, take, takeWhile, unfold, zip, zipWith, filterM, lines)
+import Prelude hiding (traverse_, for_, filter, drop, dropWhile, fold, take, takeWhile, unfold, zip, zipWith, filterM, lines, intersperse)
 import Unsafe.Coerce qualified
 import System.IO (Handle, IOMode)
 import System.IO qualified
@@ -54,8 +54,14 @@ newtype Jet a = Jet {
 exhaust :: forall a. Jet a -> forall s. (s -> a -> IO s) -> s -> IO s
 exhaust j = runJet j (const False)
 
+for_ :: Jet a -> (a -> IO b) -> IO ()
+for_ j k = exhaust j (\() -> void <$> k) () 
+
+traverse_ :: (a -> IO b) -> Jet a -> IO ()
+traverse_  = flip for_
+
 effects :: Jet a -> IO ()
-effects j = exhaust j (\() _ -> pure ()) ()
+effects = traverse_ pure
 
 instance Applicative Jet where
   pure i = Jet \stop step initial ->
@@ -317,6 +323,28 @@ mapAccumIO stepAcc initialAcc (Jet f) = Jet \stop step initial -> do
   Pair _ final <- f stop' step' initial'
   pure final
 
+data Touched = 
+      NotYetTouched
+    | AlreadyTouched
+
+intersperse :: a -> Jet a -> Jet a
+intersperse intrusion (Jet upstream) = Jet \stop step initial -> do
+  let stop' = stop . pairExtract
+      step' (Pair AlreadyTouched s) a = do
+        !s' <- step s a
+        pure (Pair AlreadyTouched s')
+      step' (Pair NotYetTouched s) a = do
+        !s' <- step s intrusion
+        if 
+            | stop s' ->
+                pure (Pair AlreadyTouched s')
+            | otherwise -> do
+                !s'' <- step s' a
+                pure (Pair AlreadyTouched s'')
+      initial' = Pair NotYetTouched initial
+  Pair _ final <- upstream stop' step' initial'
+  pure final
+
 zip :: Foldable f => f a -> Jet b -> Jet (a, b)
 zip = zipWith (,)
 
@@ -462,7 +490,10 @@ decodeUtf8 (Jet f) = Jet \stop step initial -> do
         let T.Some _ _ g = T.streamDecodeUtf8 B.empty
          in g
 
-newtype Line = Line Text 
+encodeUtf8 :: Jet Text -> Jet ByteString
+encodeUtf8 = fmap T.encodeUtf8
+
+newtype Line = Line { lineText :: Text }
     deriving stock Show 
     deriving newtype (Eq,Ord)
 
@@ -529,3 +560,31 @@ downstream stop step = go
         | otherwise = do
             s' <- step s x
             go xs s'
+
+-- General sinks
+
+class Sink destination elements where
+    sink :: destination -> Jet elements -> IO ()
+
+instance Sink BinaryFile ByteString where
+    sink (BinaryFile path) j = System.IO.withFile path System.IO.WriteMode \handle ->
+        for_ j (B.hPut handle)
+
+instance Sink Handle ByteString where
+    sink handle j = for_ j (B.hPut handle)
+
+instance Sink Utf8TextFile Line where
+    sink (Utf8TextFile path) j =  
+        System.IO.withFile path System.IO.WriteMode \handle -> 
+              traverse_ (B.hPut handle)
+            . encodeUtf8
+            . intersperse (T.singleton '\n') 
+            $ fmap lineText j 
+
+instance Sink Utf8TextHandle Line where
+    sink (Utf8TextHandle handle) j =  
+              traverse_ (B.hPut handle)
+            . encodeUtf8
+            . intersperse (T.singleton '\n') 
+            $ fmap lineText j 
+

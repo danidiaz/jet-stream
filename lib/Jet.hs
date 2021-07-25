@@ -4,6 +4,8 @@ module Jet (
         Jet,
         J.runJet,
         J.exhaust,
+        J.traverse_,
+        J.for_,
         J.effects,
         -- * Building Jets
         J.each,
@@ -29,6 +31,7 @@ module Jet (
         J.dropWhileIO,
         J.mapAccum,
         J.mapAccumIO,
+        J.intersperse,
         -- * Zips
         -- $zips
         J.zip,
@@ -56,10 +59,13 @@ module Jet (
         J.ChunkSize (..),
         -- * Text utils
         J.decodeUtf8,
-        J.Line (..),
+        J.encodeUtf8,
         J.HasLines (..),
+        J.Line (..),
         J.Utf8TextFile (..),
         J.Utf8TextHandle (..),
+        -- * General sinks
+        J.Sink(..),
     ) where
 
 import Jet.Internal (Jet)
