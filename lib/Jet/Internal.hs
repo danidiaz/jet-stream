@@ -452,28 +452,26 @@ chunkSize = \case
     ChunkSize1M -> 1048576
     ChunkSize2M -> 2097152
 
-class HasBytes source where
-    bytes :: ChunkSize -> source -> Jet ByteString
+class ToJet source element where
+    toJet :: source -> Jet element 
 
-bytes' :: ChunkSize -> Handle -> Jet ByteString
-bytes' (chunkSize -> count) handle =
+bytes :: ChunkSize -> Handle -> Jet ByteString
+bytes (chunkSize -> count) handle =
     untilEOF System.IO.hIsEOF (flip B.hGetSome count) handle
 
-instance HasBytes Handle where
-    bytes (chunkSize -> byteCount) handle = 
-        untilEOF System.IO.hIsEOF (flip B.hGetSome byteCount) handle
+instance ToJet Handle ByteString where
+    toJet = bytes DefaultChunkSize
 
 newtype BinaryFile = BinaryFile FilePath
 
-instance HasBytes BinaryFile where
-    bytes (chunkSize -> byteCount) (BinaryFile path) = do
+instance ToJet BinaryFile ByteString where
+    toJet (BinaryFile path) = do
         handle <- withFile path 
-        untilEOF System.IO.hIsEOF (flip B.hGetSome byteCount) handle
+        bytes DefaultChunkSize handle
 
 --
 --
 -- Text Jets
-
 
 decodeUtf8 :: Jet ByteString -> Jet Text
 decodeUtf8 (Jet f) = Jet \stop step initial -> do
@@ -502,34 +500,28 @@ newtype Line = Line { lineText :: Text }
     deriving newtype (Eq,Ord)
 
 isEmptyLine :: Line -> Bool
-isEmptyLine (Line text ) = T.null text 
+isEmptyLine (Line text) = T.null text 
 
 emptyLine :: Line
 emptyLine = Line T.empty
 
-class HasLines source where
-    lines :: source -> Jet Line
-
 newtype Utf8TextFile = Utf8TextFile FilePath
 
-instance HasLines Utf8TextFile where
-    lines (Utf8TextFile path) = do
+instance ToJet Utf8TextFile Line where
+    toJet (Utf8TextFile path) = do
         handle <- withFile path
-        lines (Utf8TextHandle handle)
+        toJet (Utf8TextHandle handle)
 
 newtype Utf8TextHandle = Utf8TextHandle Handle
 
-instance HasLines Utf8TextHandle where
-    lines (Utf8TextHandle handle) =
+instance ToJet Utf8TextHandle Line where
+    toJet (Utf8TextHandle handle) =
           lines 
         . decodeUtf8 
-        $ bytes ChunkSize8K handle
+        $ bytes DefaultChunkSize handle
 
-instance HasLines (Jet Text) where
-    lines = lines'
-
-lines' :: Jet Text -> Jet Line
-lines' (Jet f) = Jet \stop step initial -> do
+lines :: Jet Text -> Jet Line
+lines (Jet f) = Jet \stop step initial -> do
     let stop' = stop . pairExtract
         step' (Pair lineUnderConstruction s) text = do
             linesInCurrentBlock <- pure $ Line <$> T.lines text
@@ -567,8 +559,8 @@ downstream stop step = go
 
 -- General sinks
 
-class Sink destination elements where
-    sink :: destination -> Jet elements -> IO ()
+class Sink destination element where
+    sink :: destination -> Jet element -> IO ()
 
 instance Sink BinaryFile ByteString where
     sink (BinaryFile path) j = System.IO.withFile path System.IO.WriteMode \handle ->

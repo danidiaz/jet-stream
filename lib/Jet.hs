@@ -53,19 +53,20 @@ module Jet (
         -- * Folding Jets
         J.fold,
         J.foldIO,
+        -- * Conversion helpers
+        J.ToJet (..),
+        J.Sink(..),
         -- * Byte utils
-        J.HasBytes(..),
+        J.bytes,
         J.BinaryFile(..),
         J.ChunkSize (..),
         -- * Text utils
         J.decodeUtf8,
         J.encodeUtf8,
-        J.HasLines (..),
+        lines,
         J.Line (..),
         J.Utf8TextFile (..),
         J.Utf8TextHandle (..),
-        -- * General sinks
-        J.Sink(..),
     ) where
 
 import Jet.Internal (Jet)
