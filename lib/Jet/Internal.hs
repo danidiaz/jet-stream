@@ -489,7 +489,7 @@ decodeUtf8 (Jet f) = Jet \stop step initial -> do
         initial' = Pair leftovers0 initial
     Pair leftovers final <-  f stop' step' initial'  
     T.Some !_ !bytes !_ <- pure $ T.streamDecodeUtf8 B.empty
-    if | B.null bytes -> 
+    if | not (B.null bytes) -> 
          throwIO (T.DecodeError "Unconsumed leftovers at end." Nothing)
        | otherwise -> 
          pure final
