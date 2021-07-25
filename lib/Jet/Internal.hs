@@ -12,6 +12,8 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE LinearTypes #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module Jet.Internal where
 
@@ -21,7 +23,7 @@ import Control.Monad.IO.Class
 import Control.Exception
 import Data.Foldable qualified
 import Data.Foldable (for_)
-import Prelude hiding (filter, drop, dropWhile, fold, take, takeWhile, unfold, zip, zipWith, filterM)
+import Prelude hiding (filter, drop, dropWhile, fold, take, takeWhile, unfold, zip, zipWith, filterM, lines)
 import Unsafe.Coerce qualified
 import System.IO (Handle, IOMode)
 import System.IO qualified
@@ -339,8 +341,8 @@ zipWithIO zf (Data.Foldable.toList -> ioas0) (Jet f) = Jet \stop step initial ->
   pure final
 
 
-withFile :: FilePath -> IOMode -> Jet Handle
-withFile path ioMode = control @Handle (unsafeCoerceControl @Handle (System.IO.withFile path ioMode))
+withFile :: FilePath -> Jet Handle
+withFile path = control @Handle (unsafeCoerceControl @Handle (System.IO.withFile path System.IO.ReadMode))
 
 bracket :: forall a b . IO a -> (a -> IO b) -> Jet a
 bracket allocate free = control @a (unsafeCoerceControl @a (Control.Exception.bracket allocate free))
@@ -394,6 +396,53 @@ foldIO (Jet f) step initialIO coda = do
   r <- f (const False) step initial
   coda r
 
+
+-- Byte Jets
+
+-- https://stackoverflow.com/questions/49852060/how-to-choose-chunk-size-when-reading-a-large-file
+-- https://askubuntu.com/questions/641900/how-file-system-block-size-works
+-- https://stackoverflow.com/questions/1111661/8192-bytes-when-creating-file
+data ChunkSize =
+      DefaultChunkSize
+    | ChunkSize Int
+    | ChunkSize1K
+    | ChunkSize4K
+    | ChunkSize8K
+    | ChunkSize16K
+    | ChunkSize1M
+    | ChunkSize2M
+    deriving Show
+
+chunkSize :: ChunkSize -> Int
+chunkSize = \case
+    DefaultChunkSize -> 8192
+    ChunkSize c -> c 
+    ChunkSize1K -> 1024
+    ChunkSize4K -> 4096
+    ChunkSize8K -> 8192
+    ChunkSize16K -> 16384 
+    ChunkSize1M -> 1048576
+    ChunkSize2M -> 2097152
+
+class HasBytes source where
+    bytes :: ChunkSize -> source -> Jet ByteString
+
+instance HasBytes Handle where
+    bytes (chunkSize -> byteCount) handle = 
+        untilEOF System.IO.hIsEOF (flip B.hGetSome byteCount) handle
+
+newtype BinaryFile = BinaryFile FilePath
+
+instance HasBytes BinaryFile where
+    bytes (chunkSize -> byteCount) (BinaryFile path) = do
+        handle <- withFile path 
+        untilEOF System.IO.hIsEOF (flip B.hGetSome byteCount) handle
+
+--
+--
+-- Text Jets
+
+
 decodeUtf8 :: Jet ByteString -> Jet Text
 decodeUtf8 (Jet f) = Jet \stop step initial -> do
     let stop' = stop . pairExtract
@@ -412,26 +461,71 @@ decodeUtf8 (Jet f) = Jet \stop step initial -> do
     leftovers0 = 
         let T.Some _ _ g = T.streamDecodeUtf8 B.empty
          in g
+
+newtype Line = Line Text 
+    deriving stock Show 
+    deriving newtype (Eq,Ord)
+
+isEmptyLine :: Line -> Bool
+isEmptyLine (Line text ) = T.null text 
+
+emptyLine :: Line
+emptyLine = Line T.empty
+
+class HasLines source where
+    lines :: source -> Jet Line
+
+newtype Utf8TextFile = Utf8TextFile FilePath
+
+instance HasLines Utf8TextFile where
+    lines (Utf8TextFile path) = do
+        handle <- withFile path
+        lines (Utf8TextHandle handle)
+
+newtype Utf8TextHandle = Utf8TextHandle Handle
+
+instance HasLines Utf8TextHandle where
+    lines (Utf8TextHandle handle) =
+          lines 
+        . decodeUtf8 
+        $ bytes ChunkSize8K handle
+
+instance HasLines (Jet Text) where
+    lines = lines'
+
+lines' :: Jet Text -> Jet Line
+lines' (Jet f) = Jet \stop step initial -> do
+    let stop' = stop . pairExtract
+        step' (Pair lineUnderConstruction s) text = do
+            linesInCurrentBlock <- pure $ Line <$> T.lines text
+            if 
+                | T.null text -> 
+                    pure (Pair lineUnderConstruction s)
+                | T.last text == '\n' -> do
+                    s' <- downstream stop step linesInCurrentBlock s
+                    pure (Pair emptyLine s')
+                | otherwise -> do
+                    -- at this point, we know that linesInCurrentBlock can be non-empty
+                    s' <- downstream stop step (init linesInCurrentBlock) s
+                    pure (Pair (last linesInCurrentBlock) s')
+        initial' = Pair (Line T.empty) initial
+    Pair lineUnderConstruction final <- f stop' step' initial'  
+    if
+        | stop final -> 
+          pure final
+        | isEmptyLine lineUnderConstruction -> 
+          pure final
+        | otherwise ->
+          step final lineUnderConstruction
         
--- lines :: Handle -> Jet Text
--- lines handle = Jet \stop step initial -> do
---   let stop' (Pair [] _) = True
---       stop' (Pair _ s) = stop s
---       step' (Pair (ioa : ioas) s) b = do
---         a <- ioa
---         z <- zf a b
---         !s' <- step s z
---         pure (Pair ioas s')
---       step' (Pair [] _) _ = error "never happens"
---       initial' = Pair ioas0 initial
---   Pair _ final <- f stop' step' initial'
---   -- check the internal state here!
---   pure final
-    
-
-    
-
-
-
-
-
+downstream :: (s -> Bool) -> (s -> x -> IO s) -> [x] -> s -> IO s
+downstream stop step = go
+  where
+    go [] s = 
+        pure s
+    go (x : xs) s 
+        | stop s =
+          pure s
+        | otherwise = do
+            s' <- step s x
+            go xs s'

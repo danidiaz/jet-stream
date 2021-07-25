@@ -50,7 +50,16 @@ module Jet (
         -- * Folding Jets
         J.fold,
         J.foldIO,
+        -- * Byte utils
+        J.HasBytes(..),
+        J.BinaryFile(..),
+        J.ChunkSize (..),
         -- * Text utils
+        J.decodeUtf8,
+        J.Line (..),
+        J.HasLines (..),
+        J.Utf8TextFile (..),
+        J.Utf8TextHandle (..),
     ) where
 
 import Jet.Internal (Jet)
