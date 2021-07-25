@@ -497,10 +497,10 @@ encodeUtf8 :: Jet Text -> Jet ByteString
 encodeUtf8 = fmap T.encodeUtf8
 
 newtype Line = Line_ Text
-    deriving newtype (Eq,Ord,Show)
+    deriving newtype (Eq,Ord,Semigroup,Monoid,Show)
 
 -- https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/pattern_synonyms.html
-pattern Line text <- text
+pattern Line text <- Line_ text
 
 lineToText :: Line -> Text
 lineToText (Line_ text) = text
