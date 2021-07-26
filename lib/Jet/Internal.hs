@@ -544,7 +544,7 @@ lines (Jet f) = Jet \stop step initial -> do
               map textToLine (T.lines text)
               ++ 
               if
-                  | T.last text /= '\n' -> 
+                  | T.last text == '\n' -> 
                       [mempty]
                   | otherwise -> 
                       []
