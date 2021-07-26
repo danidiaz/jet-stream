@@ -527,11 +527,19 @@ instance JetSource Line (Utf8 FilePath) where
         handle <- withFile path
         jet (Utf8 handle)
 
-
 instance JetSource Line (Utf8 Handle) where
     jet (Utf8 handle) =
-          lines 
-        . decodeUtf8 
+          jet (Utf8 handle)
+        & lines
+
+instance JetSource Text (Utf8 FilePath) where
+    jet (Utf8 path) = do
+        handle <- withFile path
+        jet (Utf8 handle)
+
+instance JetSource Text (Utf8 Handle) where
+    jet (Utf8 handle) =
+          decodeUtf8 
         $ bytes DefaultChunkSize handle
 
 lines :: Jet Text -> Jet Line
@@ -576,8 +584,8 @@ downstream stop step = go
 
 type Funnel a = Jet a -> IO ()
 
-class JetTarget a destination where
-    funnel :: destination -> Funnel a
+class JetTarget a target where
+    funnel :: target -> Funnel a
 
 instance JetTarget ByteString (Binary FilePath) where
     funnel (Binary path) j = System.IO.withFile path System.IO.WriteMode \handle ->
@@ -589,10 +597,7 @@ instance JetTarget ByteString Handle where
 instance JetTarget Line (Utf8 FilePath) where
     funnel (Utf8 path) j =  
         System.IO.withFile path System.IO.WriteMode \handle -> 
-            j & fmap lineToText
-              & intersperse (T.singleton '\n') 
-              & encodeUtf8
-              & traverse_ (B.hPut handle)
+         j & funnel (Utf8 handle)
 
 instance JetTarget Line (Utf8 Handle) where
     funnel (Utf8 handle) j =  
