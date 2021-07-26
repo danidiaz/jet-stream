@@ -607,6 +607,8 @@ instance JetTarget Text target => JetTarget Line target where
 instance JetTarget ByteString Handle where
     funnel handle j = for_ j (B.hPut handle)
 
+-- TODO: remove this.
+-- Perhaps add a "locale" wrapper newtype, alternative to utf8. (but what about input?)
 data StdStream = StdOut | StdErr deriving Show
 
 stdStreamToHandle :: StdStream -> Handle
