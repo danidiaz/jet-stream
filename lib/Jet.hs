@@ -68,6 +68,7 @@ module Jet (
         J.Line (Line),
         J.lineToText,
         J.textToLine,
+        J.withLineText,
         J.Utf8 (..),
         J.Binary(..),
     ) where

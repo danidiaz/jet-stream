@@ -514,6 +514,9 @@ textToLine :: Text -> Line
 textToLine text | Just _ <- T.find (=='\n') text = error "text for a line can't contain newlines!"
 textToLine text = Line_ text
 
+withLineText :: (Text -> r) -> Line -> r
+withLineText f (Line text) = f text 
+
 isEmptyLine :: Line -> Bool
 isEmptyLine (Line_ text) = T.null text 
 
