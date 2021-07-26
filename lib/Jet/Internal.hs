@@ -612,6 +612,9 @@ instance ToFunnel Line StdStream where
         j & fmap lineToText
           & traverse_ T.putStrLn
 
+instance ToFunnel Text StdStream where
+    funnel (stdStreamToHandle -> handle) = traverse_ T.putStr
+
 newtype DList a = DList { runDList :: [a] -> [a] }
 
 instance Semigroup (DList a) where
