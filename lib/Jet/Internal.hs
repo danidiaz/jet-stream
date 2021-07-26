@@ -540,6 +540,7 @@ lines (Jet f) = Jet \stop step initial -> do
     let stop' = stop . pairExtract
         step' (Pair lineUnderConstruction s) text = do
             linesInCurrentBlock <- pure $ Line_ <$> T.lines text
+            -- TODO handle case of chunk of text without any newline 
             if 
                 | T.null text -> 
                     pure (Pair lineUnderConstruction s)
@@ -611,3 +612,12 @@ instance ToFunnel Line StdStream where
     funnel (stdStreamToHandle -> handle) j =
         j & fmap lineToText
           & traverse_ T.putStrLn
+
+newtype DList a = DList { runDList :: [a] -> [a] }
+
+instance Semigroup (DList a) where
+    DList a1 <> DList a2 = DList (a1 . a2)
+
+instance Monoid (DList a) where
+    mempty = DList mempty
+
