@@ -520,16 +520,16 @@ isEmptyLine (Line_ text) = T.null text
 emptyLine :: Line
 emptyLine = Line_ T.empty
 
-newtype Utf8Text a = Utf8Text a
+newtype Utf8 a = Utf8 a
 
-instance ToJet Line (Utf8Text FilePath) where
-    jet (Utf8Text path) = do
+instance ToJet Line (Utf8 FilePath) where
+    jet (Utf8 path) = do
         handle <- withFile path
-        jet (Utf8Text handle)
+        jet (Utf8 handle)
 
 
-instance ToJet Line (Utf8Text Handle) where
-    jet (Utf8Text handle) =
+instance ToJet Line (Utf8 Handle) where
+    jet (Utf8 handle) =
           lines 
         . decodeUtf8 
         $ bytes DefaultChunkSize handle
@@ -586,16 +586,16 @@ instance ToFunnel ByteString (Binary FilePath) where
 instance ToFunnel ByteString Handle where
     funnel handle j = for_ j (B.hPut handle)
 
-instance ToFunnel Line (Utf8Text FilePath) where
-    funnel (Utf8Text path) j =  
+instance ToFunnel Line (Utf8 FilePath) where
+    funnel (Utf8 path) j =  
         System.IO.withFile path System.IO.WriteMode \handle -> 
             j & fmap lineToText
               & intersperse (T.singleton '\n') 
               & encodeUtf8
               & traverse_ (B.hPut handle)
 
-instance ToFunnel Line (Utf8Text Handle) where
-    funnel (Utf8Text handle) j =  
+instance ToFunnel Line (Utf8 Handle) where
+    funnel (Utf8 handle) j =  
         j & fmap lineToText
           & intersperse (T.singleton '\n') 
           & encodeUtf8

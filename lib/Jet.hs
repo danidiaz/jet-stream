@@ -59,7 +59,6 @@ module Jet (
         J.Funnel (..),
         -- * Byte utils
         J.bytes,
-        J.Binary(..),
         J.ChunkSize (..),
         -- * Text and Line utils
         J.decodeUtf8,
@@ -68,11 +67,12 @@ module Jet (
         J.Line (Line),
         J.lineToText,
         J.textToLine,
-        J.Utf8Text (..),
+        J.Binary(..),
+        J.Utf8 (..),
         J.StdStream(..), 
     ) where
 
-import Jet.Internal (Jet)
+import Jet.Internal
 import Jet.Internal qualified as J
 
 -- $zips
