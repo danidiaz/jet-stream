@@ -59,7 +59,7 @@ module Jet (
         J.Funnel (..),
         -- * Byte utils
         J.bytes,
-        J.BinaryFile(..),
+        J.Binary(..),
         J.ChunkSize (..),
         -- * Text and Line utils
         J.decodeUtf8,
@@ -68,8 +68,7 @@ module Jet (
         J.Line (Line),
         J.lineToText,
         J.textToLine,
-        J.Utf8TextFile (..),
-        J.Utf8TextHandle (..),
+        J.Utf8Text (..),
         J.StdStream(..), 
     ) where
 

@@ -468,10 +468,10 @@ bytes (chunkSize -> count) handle =
 instance ToJet ByteString Handle where
     jet = bytes DefaultChunkSize
 
-newtype BinaryFile = BinaryFile FilePath
+newtype Binary a = Binary a
 
-instance ToJet ByteString BinaryFile where
-    jet (BinaryFile path) = do
+instance ToJet ByteString (Binary FilePath) where
+    jet (Binary path) = do
         handle <- withFile path 
         bytes DefaultChunkSize handle
 
@@ -520,17 +520,16 @@ isEmptyLine (Line_ text) = T.null text
 emptyLine :: Line
 emptyLine = Line_ T.empty
 
-newtype Utf8TextFile = Utf8TextFile FilePath
+newtype Utf8Text a = Utf8Text a
 
-instance ToJet Line Utf8TextFile where
-    jet (Utf8TextFile path) = do
+instance ToJet Line (Utf8Text FilePath) where
+    jet (Utf8Text path) = do
         handle <- withFile path
-        jet (Utf8TextHandle handle)
+        jet (Utf8Text handle)
 
-newtype Utf8TextHandle = Utf8TextHandle Handle
 
-instance ToJet Line Utf8TextHandle where
-    jet (Utf8TextHandle handle) =
+instance ToJet Line (Utf8Text Handle) where
+    jet (Utf8Text handle) =
           lines 
         . decodeUtf8 
         $ bytes DefaultChunkSize handle
@@ -580,23 +579,23 @@ type Funnel a = Jet a -> IO ()
 class ToFunnel a destination where
     funnel :: destination -> Funnel a
 
-instance ToFunnel ByteString BinaryFile where
-    funnel (BinaryFile path) j = System.IO.withFile path System.IO.WriteMode \handle ->
+instance ToFunnel ByteString (Binary FilePath) where
+    funnel (Binary path) j = System.IO.withFile path System.IO.WriteMode \handle ->
         for_ j (B.hPut handle)
 
 instance ToFunnel ByteString Handle where
     funnel handle j = for_ j (B.hPut handle)
 
-instance ToFunnel Line Utf8TextFile where
-    funnel (Utf8TextFile path) j =  
+instance ToFunnel Line (Utf8Text FilePath) where
+    funnel (Utf8Text path) j =  
         System.IO.withFile path System.IO.WriteMode \handle -> 
             j & fmap lineToText
               & intersperse (T.singleton '\n') 
               & encodeUtf8
               & traverse_ (B.hPut handle)
 
-instance ToFunnel Line Utf8TextHandle where
-    funnel (Utf8TextHandle handle) j =  
+instance ToFunnel Line (Utf8Text Handle) where
+    funnel (Utf8Text handle) j =  
         j & fmap lineToText
           & intersperse (T.singleton '\n') 
           & encodeUtf8
