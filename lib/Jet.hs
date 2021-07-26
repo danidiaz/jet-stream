@@ -62,7 +62,7 @@ module Jet (
         -- * Byte utils
         J.bytes,
         J.ChunkSize (..),
-        J.Binary(..),
+        J.File(..),
         -- * Text and Line utils
         J.decodeUtf8,
         J.encodeUtf8,

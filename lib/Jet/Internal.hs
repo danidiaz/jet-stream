@@ -16,6 +16,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Jet.Internal where
 
@@ -468,10 +469,8 @@ bytes (chunkSize -> count) handle =
 instance JetSource ByteString Handle where
     jet = bytes DefaultChunkSize
 
-newtype Binary a = Binary a
-
-instance JetSource ByteString (Binary FilePath) where
-    jet (Binary path) = do
+instance JetSource ByteString File where
+    jet (File path) = do
         handle <- withFile path 
         bytes DefaultChunkSize handle
 
@@ -525,44 +524,43 @@ emptyLine = Line_ T.empty
 
 newtype Utf8 a = Utf8 a
 
-instance JetSource Line (Utf8 FilePath) where
-    jet (Utf8 path) = do
-        handle <- withFile path
-        jet (Utf8 handle)
-
-instance JetSource Line (Utf8 Handle) where
-    jet (Utf8 handle) =
-          jet (Utf8 handle)
+instance JetSource Text source => JetSource Line source where
+    jet source = do
+          jet @Text source
         & lines
 
-instance JetSource Text (Utf8 FilePath) where
-    jet (Utf8 path) = do
-        handle <- withFile path
-        jet (Utf8 handle)
-
-instance JetSource Text (Utf8 Handle) where
-    jet (Utf8 handle) =
-          decodeUtf8 
-        $ bytes DefaultChunkSize handle
+instance JetSource ByteString source => JetSource Text (Utf8 source) where
+    jet (Utf8 source) = do
+          jet @ByteString source
+        & decodeUtf8  
 
 lines :: Jet Text -> Jet Line
 lines (Jet f) = Jet \stop step initial -> do
     let stop' = stop . pairExtract
-        step' (Pair lineUnderConstruction s) text = do
-            linesInCurrentBlock <- pure $ Line_ <$> T.lines text
-            -- TODO handle case of chunk of text without any newline 
-            if 
-                | T.null text -> 
+        findLinesInCurrentBlock text  
+            | T.null text =
+              []
+            | otherwise =
+              map textToLine (T.lines text)
+              ++ 
+              if
+                  | T.last text /= '\n' -> 
+                      [mempty]
+                  | otherwise -> 
+                      []
+        step' (Pair lineUnderConstruction s) (findLinesInCurrentBlock -> linesInCurrentBlock) = do
+            case linesInCurrentBlock of
+                [] -> 
                     pure (Pair lineUnderConstruction s)
-                | T.last text == '\n' -> do
-                    s' <- downstream stop step linesInCurrentBlock s
-                    pure (Pair emptyLine s')
-                | otherwise -> do
-                    -- at this point, we know that linesInCurrentBlock can be non-empty
-                    s' <- downstream stop step (init linesInCurrentBlock) s
-                    pure (Pair (last linesInCurrentBlock) s')
-        initial' = Pair (Line_ T.empty) initial
-    Pair lineUnderConstruction final <- f stop' step' initial'  
+                [l] -> 
+                    pure (Pair (lineUnderConstruction <> singleton l) s)
+                l : rest@(x : xs) -> 
+                    -- Ineficcient mconcat, better strictify a lazy text here?
+                    do let completedLine = mconcat $ runDList lineUnderConstruction [l]
+                       s' <- downstream stop step (completedLine : init rest) s
+                       pure (Pair (singleton (last linesInCurrentBlock)) s')
+        initial' = Pair mempty initial
+    Pair (mconcat . closeDList -> lineUnderConstruction) final <- f stop' step' initial'  
     if
         | stop final -> 
           pure final
@@ -590,24 +588,23 @@ type Funnel a = Jet a -> IO ()
 class JetTarget a target where
     funnel :: target -> Funnel a
 
-instance JetTarget ByteString (Binary FilePath) where
-    funnel (Binary path) j = System.IO.withFile path System.IO.WriteMode \handle ->
-        for_ j (B.hPut handle)
+instance JetTarget ByteString File where
+    funnel (File path) j = System.IO.withFile path System.IO.WriteMode \handle ->
+        funnel handle j
+
+instance JetTarget ByteString target => JetTarget Text (Utf8 target) where 
+    funnel (Utf8 target) j =
+        j & encodeUtf8
+          & funnel target
+
+instance JetTarget Text target => JetTarget Line target where 
+    funnel target j =
+        j & fmap lineToText
+          & intersperse (T.singleton '\n') 
+          & funnel target
 
 instance JetTarget ByteString Handle where
     funnel handle j = for_ j (B.hPut handle)
-
-instance JetTarget Line (Utf8 FilePath) where
-    funnel (Utf8 path) j =  
-        System.IO.withFile path System.IO.WriteMode \handle -> 
-         j & funnel (Utf8 handle)
-
-instance JetTarget Line (Utf8 Handle) where
-    funnel (Utf8 handle) j =  
-        j & fmap lineToText
-          & intersperse (T.singleton '\n') 
-          & encodeUtf8
-          & traverse_ (B.hPut handle)
 
 data StdStream = StdOut | StdErr deriving Show
 
@@ -615,14 +612,12 @@ stdStreamToHandle :: StdStream -> Handle
 stdStreamToHandle StdOut = System.IO.stdout
 stdStreamToHandle StdErr = System.IO.stderr
 
-instance JetTarget Line StdStream where
-    funnel (stdStreamToHandle -> handle) j =
-        j & fmap lineToText
-          & traverse_ T.putStrLn
-
 instance JetTarget Text StdStream where
     funnel (stdStreamToHandle -> handle) = traverse_ T.putStr
 
+newtype File = File { getFilePath :: FilePath } deriving Show
+
+-- DList helper
 newtype DList a = DList { runDList :: [a] -> [a] }
 
 instance Semigroup (DList a) where
@@ -630,4 +625,13 @@ instance Semigroup (DList a) where
 
 instance Monoid (DList a) where
     mempty = DList mempty
+
+makeDList :: [a] -> DList a
+makeDList as = DList \xs -> as ++ xs
+
+closeDList :: DList a -> [a]
+closeDList (DList f) = f [] 
+
+singleton :: a -> DList a
+singleton a = DList $ (a :) 
 
