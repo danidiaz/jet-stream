@@ -67,6 +67,7 @@ traverse_  = flip for_
 effects :: Jet a -> IO ()
 effects = traverse_ pure
 
+-- | Synonym for '(=<<)'. Might be occasionally useful when building pipelines with '(&)'.
 flatMap :: (a -> Jet b) -> Jet a -> Jet b
 flatMap = (=<<)
 

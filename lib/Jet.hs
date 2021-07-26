@@ -54,16 +54,10 @@ module Jet (
         -- * Folding Jets
         J.fold,
         J.foldIO,
-        -- * Conversion helpers
-        J.JetSource (..),
-        J.JetTarget(..),
-        J.Funnel (..),
-        J.StdStream(..), 
         -- * Byte utils
         J.bytes,
         J.ChunkSize (..),
-        J.File(..),
-        -- * Text and Line utils
+        -- * Text and line utils
         J.decodeUtf8,
         J.encodeUtf8,
         J.lines,
@@ -71,7 +65,13 @@ module Jet (
         J.lineToText,
         J.textToLine,
         J.withLineText,
+        -- * Conversion helpers
+        J.JetSource (..),
+        J.JetTarget (..),
+        J.Funnel (..),
+        J.File (..),
         J.Utf8 (..),
+        J.StdStream (..), 
     ) where
 
 import Jet.Internal
