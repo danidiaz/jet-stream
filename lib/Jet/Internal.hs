@@ -458,19 +458,19 @@ chunkSize = \case
     ChunkSize1M -> 1048576
     ChunkSize2M -> 2097152
 
-class ToJet a source where
+class JetSource a source where
     jet :: source -> Jet a 
 
 bytes :: ChunkSize -> Handle -> Jet ByteString
 bytes (chunkSize -> count) handle =
     untilEOF System.IO.hIsEOF (flip B.hGetSome count) handle
 
-instance ToJet ByteString Handle where
+instance JetSource ByteString Handle where
     jet = bytes DefaultChunkSize
 
 newtype Binary a = Binary a
 
-instance ToJet ByteString (Binary FilePath) where
+instance JetSource ByteString (Binary FilePath) where
     jet (Binary path) = do
         handle <- withFile path 
         bytes DefaultChunkSize handle
@@ -522,13 +522,13 @@ emptyLine = Line_ T.empty
 
 newtype Utf8 a = Utf8 a
 
-instance ToJet Line (Utf8 FilePath) where
+instance JetSource Line (Utf8 FilePath) where
     jet (Utf8 path) = do
         handle <- withFile path
         jet (Utf8 handle)
 
 
-instance ToJet Line (Utf8 Handle) where
+instance JetSource Line (Utf8 Handle) where
     jet (Utf8 handle) =
           lines 
         . decodeUtf8 
@@ -576,17 +576,17 @@ downstream stop step = go
 
 type Funnel a = Jet a -> IO ()
 
-class ToFunnel a destination where
+class JetTarget a destination where
     funnel :: destination -> Funnel a
 
-instance ToFunnel ByteString (Binary FilePath) where
+instance JetTarget ByteString (Binary FilePath) where
     funnel (Binary path) j = System.IO.withFile path System.IO.WriteMode \handle ->
         for_ j (B.hPut handle)
 
-instance ToFunnel ByteString Handle where
+instance JetTarget ByteString Handle where
     funnel handle j = for_ j (B.hPut handle)
 
-instance ToFunnel Line (Utf8 FilePath) where
+instance JetTarget Line (Utf8 FilePath) where
     funnel (Utf8 path) j =  
         System.IO.withFile path System.IO.WriteMode \handle -> 
             j & fmap lineToText
@@ -594,7 +594,7 @@ instance ToFunnel Line (Utf8 FilePath) where
               & encodeUtf8
               & traverse_ (B.hPut handle)
 
-instance ToFunnel Line (Utf8 Handle) where
+instance JetTarget Line (Utf8 Handle) where
     funnel (Utf8 handle) j =  
         j & fmap lineToText
           & intersperse (T.singleton '\n') 
@@ -607,12 +607,12 @@ stdStreamToHandle :: StdStream -> Handle
 stdStreamToHandle StdOut = System.IO.stdout
 stdStreamToHandle StdErr = System.IO.stderr
 
-instance ToFunnel Line StdStream where
+instance JetTarget Line StdStream where
     funnel (stdStreamToHandle -> handle) j =
         j & fmap lineToText
           & traverse_ T.putStrLn
 
-instance ToFunnel Text StdStream where
+instance JetTarget Text StdStream where
     funnel (stdStreamToHandle -> handle) = traverse_ T.putStr
 
 newtype DList a = DList { runDList :: [a] -> [a] }

@@ -54,9 +54,10 @@ module Jet (
         J.fold,
         J.foldIO,
         -- * Conversion helpers
-        J.ToJet (..),
-        J.ToFunnel(..),
+        J.JetSource (..),
+        J.JetTarget(..),
         J.Funnel (..),
+        J.StdStream(..), 
         -- * Byte utils
         J.bytes,
         J.ChunkSize (..),
@@ -67,9 +68,8 @@ module Jet (
         J.Line (Line),
         J.lineToText,
         J.textToLine,
-        J.Binary(..),
         J.Utf8 (..),
-        J.StdStream(..), 
+        J.Binary(..),
     ) where
 
 import Jet.Internal
