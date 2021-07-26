@@ -7,6 +7,7 @@ module Jet (
         J.traverse_,
         J.for_,
         J.effects,
+        J.flatMap,
         -- * Building Jets
         J.each,
         J.repeat,
@@ -61,6 +62,7 @@ module Jet (
         -- * Byte utils
         J.bytes,
         J.ChunkSize (..),
+        J.Binary(..),
         -- * Text and Line utils
         J.decodeUtf8,
         J.encodeUtf8,
@@ -70,7 +72,6 @@ module Jet (
         J.textToLine,
         J.withLineText,
         J.Utf8 (..),
-        J.Binary(..),
     ) where
 
 import Jet.Internal

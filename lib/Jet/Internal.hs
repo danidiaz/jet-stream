@@ -66,8 +66,8 @@ traverse_  = flip for_
 effects :: Jet a -> IO ()
 effects = traverse_ pure
 
--- flatMap :: (a -> Jet b) -> Jet a -> Jet b
--- flatMap = (=<<)
+flatMap :: (a -> Jet b) -> Jet a -> Jet b
+flatMap = (=<<)
 
 instance Applicative Jet where
   pure i = Jet \stop step initial ->
