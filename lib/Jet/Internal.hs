@@ -53,14 +53,14 @@ newtype Jet a = Jet {
 -- He must also provide a predicate on the state that informs the `Jet`
 -- when to stop producing values: whenever the predicate returns
 -- @True@.
-run :: forall a. Jet a -> forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
-run = runJet 
+run :: forall a s. Jet a -> (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
+run j = runJet j
 
 -- | Like 'run', but goes through all elements produced by the 'Jet'.
 --
 -- Equivalent to @runJet (const False)@.
-consume :: forall a. Jet a -> forall s. (s -> a -> IO s) -> s -> IO s
-consume j = runJet j (const False)
+consume :: forall a s. Jet a -> (s -> a -> IO s) -> s -> IO s
+consume j = run j (const False)
 
 for :: Jet a -> (a -> IO b) -> Jet b
 for j k = zipWithIO (\() -> k) (Prelude.repeat (pure ())) j
