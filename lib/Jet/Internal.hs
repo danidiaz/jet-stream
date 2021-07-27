@@ -530,7 +530,7 @@ emptyLine = Line_ T.empty
 
 newtype Utf8 a = Utf8 a
 
-instance JetSource Text source => JetSource Line source where
+instance JetSource Text (Utf8 source) => JetSource Line (Utf8 source) where
     jet source = do
           jet @Text source
         & lines
@@ -606,7 +606,7 @@ instance JetTarget ByteString target => JetTarget Text (Utf8 target) where
         j & encodeUtf8
           & funnel target
 
-instance JetTarget Text target => JetTarget Line target where 
+instance JetTarget Text (Utf8 target) => JetTarget Line (Utf8 target) where 
     funnel target j =
         j & fmap lineToText
           & intersperse (T.singleton '\n') 
@@ -626,6 +626,10 @@ instance JetTarget Text target => JetTarget Line target where
 -- | Uses the default system locale.
 instance JetTarget Line Handle where
     funnel handle = traverse_ (T.hPutStrLn handle . lineToText)
+
+-- | Uses the default system locale.
+instance JetTarget Text Handle where
+    funnel handle = traverse_ (T.hPutStr handle)
 
 newtype File = File { getFilePath :: FilePath } deriving Show
 
