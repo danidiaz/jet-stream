@@ -324,9 +324,7 @@ filterIO p (Jet f) = Jet \stop step initial -> do
 --
 -- The resulting 'Jet' has the same number of elements as the original one.
 --
--- One difference with 'Data.Traversable.mapAccumL' is that the current value
--- of the accumulator is yielded along with each element, instead of only
--- returning the final value at the end.
+-- Unlike 'Data.Traversable.mapAccumL', it doesn't make the final state available. 
 mapAccum :: (a -> b -> (a, c)) -> a -> Jet b -> Jet c
 mapAccum stepAcc = mapAccumIO (fmap (fmap pure) stepAcc)
 
