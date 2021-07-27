@@ -56,7 +56,7 @@ newtype Jet a = Jet {
 run :: forall a s. Jet a -> (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
 run j = runJet j
 
--- | Like 'run', but goes through all elements produced by the 'Jet'.
+-- | Like 'run', but always goes through all elements produced by the 'Jet'.
 --
 -- Equivalent to @runJet (const False)@.
 consume :: forall a s. Jet a -> (s -> a -> IO s) -> s -> IO s
