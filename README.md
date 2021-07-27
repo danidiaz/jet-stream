@@ -26,12 +26,13 @@ In order to achieve those objectives, the following sacrifices have been made:
   like you can do for example in
   [streaming](https://hackage.haskell.org/package/streaming-0.2.3.0/docs/Streaming-Prelude.html#v:next).
 
-- You can't detect the "end" of previous stream stages inside a downstream
-  stage.
+- There are `take` and `drop` operations, but no `splitAt` (in contrast with
+  [streaming](https://hackage.haskell.org/package/streaming-0.2.3.0/docs/Streaming-Prelude.html#v:next)
+  which represents
+  [`splitAt`](https://hackage.haskell.org/package/streaming-0.2.3.0/docs/Streaming-Prelude.html#v:splitAt)
+  very elegantly). 
 
-- Partly as a consequence of the previous point, grouping operations inside a
-  stream are not well supported.  You can, however, perform some form of
-  grouping as a terminal operation.
+- Grouping operations are underpowered (In fact, they don't exist right now.)
 
 ## Some close cousins
 
