@@ -41,32 +41,41 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 
 newtype Jet a = Jet {
-        -- | Go through the elements produced by a 'Jet', while keeping an
-        -- state @s@ and possibly performing some effect.
-        --
-        -- The caller is the one who chooses the type of the state @s@, and
-        -- must pass an initial value for it.
-        --
-        -- He must also provide a predicate on the state that informs the `Jet`
-        -- when to stop producing values: whenever the predicate returns
-        -- @True@.
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
     } deriving (Functor)
 
--- | Like 'runJet', but goes through all elements produced by the 'Jet'.
+-- | Go through the elements produced by a 'Jet', while keeping an
+-- state @s@ and possibly performing some effect.
+--
+-- The caller is the one who chooses the type of the state @s@, and
+-- must pass an initial value for it.
+--
+-- He must also provide a predicate on the state that informs the `Jet`
+-- when to stop producing values: whenever the predicate returns
+-- @True@.
+run :: forall a. Jet a -> forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
+run = runJet 
+
+-- | Like 'run', but goes through all elements produced by the 'Jet'.
 --
 -- Equivalent to @runJet (const False)@.
-exhaust :: forall a. Jet a -> forall s. (s -> a -> IO s) -> s -> IO s
-exhaust j = runJet j (const False)
+consume :: forall a. Jet a -> forall s. (s -> a -> IO s) -> s -> IO s
+consume j = runJet j (const False)
+
+for :: Jet a -> (a -> IO b) -> Jet b
+for j k = zipWithIO (\() -> k) (Prelude.repeat (pure ())) j
 
 for_ :: Jet a -> (a -> IO b) -> IO ()
-for_ j k = exhaust j (\() -> void <$> k) () 
+for_ j k = consume j (\() -> void <$> k) () 
+
+traverse :: (a -> IO b) -> Jet a -> Jet b
+traverse =  flip for
 
 traverse_ :: (a -> IO b) -> Jet a -> IO ()
 traverse_  = flip for_
 
-effects :: Jet a -> IO ()
-effects = traverse_ pure
+drain :: Jet a -> IO ()
+drain = traverse_ pure
 
 -- -- | Synonym for '(=<<)'. Might be occasionally useful when building pipelines with '(&)'.
 -- flatMap :: (a -> Jet b) -> Jet a -> Jet b

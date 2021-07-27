@@ -2,11 +2,13 @@
 module Jet (
         -- * The Jet type
         Jet,
-        J.runJet,
-        J.exhaust,
+        J.run,
+        J.consume,
+        J.traverse,
         J.traverse_,
+        J.for,
         J.for_,
-        J.effects,
+        J.drain,
         -- J.flatMap,
         -- * Building Jets
         J.each,
