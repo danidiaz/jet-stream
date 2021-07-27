@@ -42,7 +42,9 @@ library
                       Jet.Internal
     build-depends:    
         bytestring,
-        text
+        text,
+        stm-chans ^>= 3.0.0.0,
+        async ^>= 2.2.3,
     hs-source-dirs:   lib
 
 test-suite tests
