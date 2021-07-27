@@ -71,8 +71,13 @@ module Jet (
         J.Funnel (..),
         J.File (..),
         J.Utf8 (..),
-        J.StdStream (..), 
+        -- * Re-exports
+        stdin,
+        stdout,
+        stderr,
     ) where
+
+import System.IO (stdin, stdout, stderr)
 
 import Jet.Internal
 import Jet.Internal qualified as J

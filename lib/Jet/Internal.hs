@@ -470,10 +470,15 @@ bytes (chunkSize -> count) handle =
 instance JetSource ByteString Handle where
     jet = bytes DefaultChunkSize
 
-instance JetSource ByteString File where
+instance JetSource a Handle => JetSource a File where
     jet (File path) = do
         handle <- withFile path 
-        bytes DefaultChunkSize handle
+        jet handle
+
+-- | Uses the default system locale.
+instance JetSource Line Handle where
+    jet handle = 
+        textToLine <$> untilEOF System.IO.hIsEOF T.hGetLine handle
 
 --
 --
@@ -589,7 +594,10 @@ type Funnel a = Jet a -> IO ()
 class JetTarget a target where
     funnel :: target -> Funnel a
 
-instance JetTarget ByteString File where
+instance JetTarget ByteString Handle where
+    funnel handle j = for_ j (B.hPut handle)
+
+instance JetTarget a Handle => JetTarget a File where
     funnel (File path) j = System.IO.withFile path System.IO.WriteMode \handle ->
         funnel handle j
 
@@ -604,19 +612,20 @@ instance JetTarget Text target => JetTarget Line target where
           & intersperse (T.singleton '\n') 
           & funnel target
 
-instance JetTarget ByteString Handle where
-    funnel handle j = for_ j (B.hPut handle)
-
 -- TODO: remove this.
 -- Perhaps add a "locale" wrapper newtype, alternative to utf8. (but what about input?)
-data StdStream = StdOut | StdErr deriving Show
+-- data StdStream = StdOut | StdErr deriving Show
+-- 
+-- stdStreamToHandle :: StdStream -> Handle
+-- stdStreamToHandle StdOut = System.IO.stdout
+-- stdStreamToHandle StdErr = System.IO.stderr
+-- 
+-- instance JetTarget Text StdStream where
+--     funnel (stdStreamToHandle -> handle) = traverse_ T.putStr
 
-stdStreamToHandle :: StdStream -> Handle
-stdStreamToHandle StdOut = System.IO.stdout
-stdStreamToHandle StdErr = System.IO.stderr
-
-instance JetTarget Text StdStream where
-    funnel (stdStreamToHandle -> handle) = traverse_ T.putStr
+-- | Uses the default system locale.
+instance JetTarget Line Handle where
+    funnel handle = traverse_ (T.hPutStrLn handle . lineToText)
 
 newtype File = File { getFilePath :: FilePath } deriving Show
 
