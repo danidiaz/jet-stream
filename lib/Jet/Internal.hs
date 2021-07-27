@@ -58,7 +58,7 @@ run j = runJet j
 
 -- | Like 'run', but always goes through all elements produced by the 'Jet'.
 --
--- Equivalent to @runJet (const False)@.
+-- Equivalent to @run (const False)@.
 consume :: forall a s. Jet a -> (s -> a -> IO s) -> s -> IO s
 consume j = run j (const False)
 
