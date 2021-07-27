@@ -30,6 +30,7 @@ import Unsafe.Coerce qualified
 import System.IO (Handle, IOMode)
 import System.IO qualified
 import Data.Function ((&))
+import Data.Functor ((<&>))
 
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -67,9 +68,9 @@ traverse_  = flip for_
 effects :: Jet a -> IO ()
 effects = traverse_ pure
 
--- | Synonym for '(=<<)'. Might be occasionally useful when building pipelines with '(&)'.
-flatMap :: (a -> Jet b) -> Jet a -> Jet b
-flatMap = (=<<)
+-- -- | Synonym for '(=<<)'. Might be occasionally useful when building pipelines with '(&)'.
+-- flatMap :: (a -> Jet b) -> Jet a -> Jet b
+-- flatMap = (=<<)
 
 instance Applicative Jet where
   pure i = Jet \stop step initial ->
@@ -516,8 +517,9 @@ lineToText :: Line -> Text
 lineToText (Line_ text) = text
 
 textToLine :: Text -> Line
-textToLine text | Just _ <- T.find (=='\n') text = error "text for a line can't contain newlines!"
-textToLine text = Line_ text
+textToLine text 
+    | Just _ <- T.find (=='\n') text = error "text for a line can't contain newlines!"
+    | otherwise = Line_ (removeTrailingCarriageReturn text)
 
 withLineText :: (Text -> r) -> Line -> r
 withLineText f (Line text) = f text 
@@ -540,6 +542,12 @@ instance JetSource ByteString source => JetSource Text (Utf8 source) where
           jet @ByteString source
         & decodeUtf8  
 
+removeTrailingCarriageReturn :: Text -> Text
+removeTrailingCarriageReturn text 
+    | T.null text = text
+    | T.last text == '\r' = T.init text
+    | otherwise = text
+
 lines :: Jet Text -> Jet Line
 lines (Jet f) = Jet \stop step initial -> do
     let stop' = stop . pairExtract
@@ -547,7 +555,7 @@ lines (Jet f) = Jet \stop step initial -> do
             | T.null text =
               []
             | otherwise =
-              map textToLine (T.lines text)
+              map (textToLine . removeTrailingCarriageReturn) (T.lines text)
               ++ 
               if
                   | T.last text == '\n' -> 
@@ -556,15 +564,15 @@ lines (Jet f) = Jet \stop step initial -> do
                       []
         step' (Pair lineUnderConstruction s) (findLinesInCurrentBlock -> linesInCurrentBlock) = do
             case linesInCurrentBlock of
-                [] -> 
+                [] -> do
                     pure (Pair lineUnderConstruction s)
-                [l] -> 
+                [l] -> do
                     pure (Pair (lineUnderConstruction <> singleton l) s)
-                l : rest@(x : xs) -> 
+                l : rest@(x : xs) -> do
                     -- Ineficcient mconcat, better strictify a lazy text here?
-                    do let completedLine = mconcat $ runDList lineUnderConstruction [l]
-                       s' <- downstream stop step (completedLine : init rest) s
-                       pure (Pair (singleton (last linesInCurrentBlock)) s')
+                    let completedLine = mconcat $ runDList lineUnderConstruction [l]
+                    s' <- downstream stop step (completedLine : init rest) s
+                    pure (Pair (singleton (last linesInCurrentBlock)) s')
         initial' = Pair mempty initial
     Pair (mconcat . closeDList -> lineUnderConstruction) final <- f stop' step' initial'  
     if
@@ -640,7 +648,7 @@ instance Semigroup (DList a) where
     DList a1 <> DList a2 = DList (a1 . a2)
 
 instance Monoid (DList a) where
-    mempty = DList mempty
+    mempty = DList id
 
 makeDList :: [a] -> DList a
 makeDList as = DList \xs -> as ++ xs

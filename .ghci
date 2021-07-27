@@ -5,7 +5,9 @@
 :set -fprint-explicit-foralls
 
 import Data.Function ((&))
+import Data.Functor ((<&>))
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.IO qualified as T
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B

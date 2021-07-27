@@ -40,6 +40,8 @@ In order to achieve those objectives, the following sacrifices have been made:
   provide a way for the `Shell` consumer to signal that no further values are
   needed.
 
+- [streamly](https://hackage.haskell.org/package/streamly). I might have reinvented a subset of streamly ([but worse](https://www.mcmillen.dev/language_checklist.html)).
+
 - [Z.IO.BIO](https://hackage.haskell.org/package/Z-IO-1.0.0.0/docs/Z-IO-BIO.html)
   from [Z-IO](https://hackage.haskell.org/package/Z-IO). Like `Jet`, uses a
   callback-transformation approach. 

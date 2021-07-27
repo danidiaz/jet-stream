@@ -7,7 +7,7 @@ module Jet (
         J.traverse_,
         J.for_,
         J.effects,
-        J.flatMap,
+        -- J.flatMap,
         -- * Building Jets
         J.each,
         J.repeat,
