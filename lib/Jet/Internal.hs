@@ -753,10 +753,20 @@ traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
           runConcurrently $
               Concurrently inputWriter
               *>
-              Concurrently (replicateConcurrently_ _numberOfWorkers worker)
-              *> 
-              Concurrently (outputReader initial)
-
+              Concurrently do
+                finalE <- do
+                    runConceit $ 
+                        -- The worker pool never kills any thread, but it can be killed.
+                        Conceit (Right <$> replicateConcurrently_ _numberOfWorkers worker)
+                        *> 
+                        -- The worker pool is always killed when the output reader finishes,
+                        -- but for the "happy path" the workers will already be dead.
+                        Conceit (Left <$> outputReader initial)
+                case finalE of
+                  Right () -> do
+                      error "never happens, the Left always wins"
+                  Left final -> do
+                      pure final
 
 data PoolConf = PoolConf {
         _inputQueueSize :: Int,
