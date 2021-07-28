@@ -73,6 +73,11 @@ module Jet (
         J.Funnel (..),
         J.File (..),
         J.Utf8 (..),
+        -- * Concurrency
+        PoolConf,
+        inputQueueSize,
+        numberOfWorkers,
+        outputQueueSize,
         -- * Re-exports
         stdin,
         stdout,

@@ -674,3 +674,21 @@ closeDList (DList f) = f []
 singleton :: a -> DList a
 singleton a = DList $ (a :) 
 
+--
+-- concurrency
+
+data PoolConf = PoolConf {
+        _inputQueueSize :: Int,
+        _numberOfWorkers :: Int,
+        _outputQueueSize :: Int
+    } deriving Show
+
+inputQueueSize :: Int -> PoolConf -> PoolConf
+inputQueueSize size poolConf = poolConf { _inputQueueSize = size }
+
+numberOfWorkers :: Int -> PoolConf -> PoolConf
+numberOfWorkers number poolConf = poolConf { _numberOfWorkers = number }
+
+outputQueueSize :: Int -> PoolConf -> PoolConf 
+outputQueueSize size poolConf = poolConf { _outputQueueSize = size }
+
