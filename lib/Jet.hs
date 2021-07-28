@@ -82,12 +82,17 @@ module Jet (
         stdin,
         stdout,
         stderr,
+        (&),
+        (<&>),
     ) where
 
 import System.IO (stdin, stdout, stderr)
 
 import Jet.Internal
 import Jet.Internal qualified as J
+
+import Data.Function ((&))
+import Data.Functor ((<&>))
 
 -- $zips
 --

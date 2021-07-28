@@ -43,6 +43,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 
 import Control.Concurrent
+import Control.Concurrent.STM
 import Control.Concurrent.MVar
 import Control.Concurrent.Conceit
 import Control.Concurrent.STM.TBMQueue
@@ -680,17 +681,20 @@ singleton a = DList $ (a :)
 -- concurrency
 
 traverseConcurrently :: (PoolConf -> PoolConf) -> (a -> IO b) -> Jet a -> Jet b
-traverseConcurrently adaptConf action (Jet upstream) = Jet \stop step initial -> do
+traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
     let PoolConf {_inputQueueSize,_numberOfWorkers,_outputQueueSize} = adaptConf defaultPoolConf
     input <- newTBMQueueIO _inputQueueSize
     output <- newTBMQueueIO _outputQueueSize
     let worker = do
-            mtask <- readTBMQueue input
+            mtask <- atomically $ readTBMQueue input
             case mtask of
                 Nothing -> pure ()
                 Just task -> do
                         result <- task
-                        writeTBMQueue output result
+                        atomically $ writeTBMQueue output result
+        inputReader = do
+            for_ upstream \a -> do
+                atomically $ writeTBMQueue input (makeTask a)
     undefined
 
 data PoolConf = PoolConf {
