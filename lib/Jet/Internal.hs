@@ -683,8 +683,13 @@ singleton a = DList $ (a :)
 -- concurrency
 
 -- TODO: 
+-- Perhaps the writer shoult wait for the reader to start?
+-- TODO: 
 -- under *normal* (not interrupted), how to implement "last worker turns off
 -- the light" behaviour?
+-- TODO:
+-- It would be nice to have 0-lengh channels for which one side blocks until
+-- the other side takes the job.
 traverseConcurrently :: (PoolConf -> PoolConf) -> (a -> IO b) -> Jet a -> Jet b
 traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
     if 
@@ -694,29 +699,47 @@ traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
           pure initial
         | otherwise -> do
           -- At this point we know we should do at least one step.
-          shouldStop <- newIORef False
           let PoolConf {_inputQueueSize,_numberOfWorkers,_outputQueueSize} = adaptConf defaultPoolConf
           input <- newTBMQueueIO _inputQueueSize
+          inputShouldStop <- newIORef False
+          aliveWorkers <- newIORef _numberOfWorkers
           output <- newTBMQueueIO _outputQueueSize
           let 
               -- The inputWriter should *not* be interrupted aynchronously.
+              -- After each iteration, it reads the IORef to see if it should stop.
+              -- Once it stops, it closes the input queue.
               inputWriter = do
-                  for_ upstream \a -> do
-                      atomically $ writeTBMQueue input (makeTask a)
+                  run 
+                    upstream 
+                    id 
+                    (\_ a -> do
+                        atomically $ writeTBMQueue input (makeTask a)
+                        readIORef inputShouldStop) 
+                    False
                   atomically $ closeTBMQueue input
-              -- Workers can be interrupted asynchronously.
+              -- Workers *can* be interrupted asynchronously.
               worker = do
                   mtask <- atomically $ readTBMQueue input
                   case mtask of
-                      Nothing -> pure ()
+                      Nothing -> do
+                        remaining <- do
+                            atomicModifyIORef' aliveWorkers \count -> 
+                                let count' = pred count 
+                                 in (count', count')
+                        if 
+                            | remaining == 0 -> do
+                              atomically $ closeTBMQueue output
+                            | otherwise -> do
+                              pure ()
                       Just task -> do
-                              result <- task
-                              atomically $ writeTBMQueue output result
+                        result <- task
+                        atomically $ writeTBMQueue output result
+                        worker
               outputReader s = do
                   if
                       | stop s -> do
                         -- tell the inserter from upstream that it should stop. is this enough?
-                        writeIORef shouldStop True
+                        writeIORef inputShouldStop True
                         atomically $ closeTBMQueue input -- perhaps unnecessary?
                         pure s
                       | otherwise -> do
