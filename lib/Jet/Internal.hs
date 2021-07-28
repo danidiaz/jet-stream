@@ -17,6 +17,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module Jet.Internal where
 
@@ -44,6 +45,7 @@ import Data.ByteString qualified as B
 import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Concurrent.Conceit
+import Control.Concurrent.STM.TBMQueue
 
 newtype Jet a = Jet {
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
@@ -677,11 +679,31 @@ singleton a = DList $ (a :)
 --
 -- concurrency
 
+traverseConcurrently :: (PoolConf -> PoolConf) -> (a -> IO b) -> Jet a -> Jet b
+traverseConcurrently adaptConf action (Jet upstream) = Jet \stop step initial -> do
+    let PoolConf {_inputQueueSize,_numberOfWorkers,_outputQueueSize} = adaptConf defaultPoolConf
+    input <- newTBMQueueIO _inputQueueSize
+    output <- newTBMQueueIO _outputQueueSize
+    let worker = do
+            mtask <- readTBMQueue input
+            case mtask of
+                Nothing -> pure ()
+                Just task -> do
+                        result <- task
+                        writeTBMQueue output result
+    undefined
+
 data PoolConf = PoolConf {
         _inputQueueSize :: Int,
         _numberOfWorkers :: Int,
         _outputQueueSize :: Int
     } deriving Show
+
+defaultPoolConf = PoolConf {
+        _inputQueueSize = 1,
+        _numberOfWorkers = 1,
+        _outputQueueSize = 1
+ }
 
 inputQueueSize :: Int -> PoolConf -> PoolConf
 inputQueueSize size poolConf = poolConf { _inputQueueSize = size }
