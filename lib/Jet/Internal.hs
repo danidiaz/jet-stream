@@ -32,6 +32,7 @@ import System.IO qualified
 import Data.Function ((&))
 import Data.Functor ((<&>))
 
+import Data.Bifunctor
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
@@ -39,6 +40,9 @@ import Data.Text.Encoding qualified as T
 import Data.Text.Encoding.Error qualified as T
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
+
+import Control.Concurrent
+import Control.Concurrent.MVar
 
 newtype Jet a = Jet {
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
@@ -70,6 +74,9 @@ for_ j k = consume j (\() -> void <$> k) ()
 
 traverse :: (a -> IO b) -> Jet a -> Jet b
 traverse =  flip for
+
+-- data ConcLevel = ConcLevel Int
+-- traverseCo
 
 traverse_ :: (a -> IO b) -> Jet a -> IO ()
 traverse_  = flip for_
@@ -665,4 +672,96 @@ closeDList (DList f) = f []
 
 singleton :: a -> DList a
 singleton a = DList $ (a :) 
+
+-- 
+--
+-- A copy of the "conceit" package, with fewer dependencies.  
+
+newtype Conceit e a = Conceit { runConceit :: IO (Either e a) } deriving Functor
+
+instance Bifunctor Conceit where
+  bimap f g (Conceit x) = Conceit $ liftA (bimap f g) x
+
+instance Applicative (Conceit e) where
+  pure = Conceit . pure . pure
+  Conceit fs <*> Conceit as =
+         Conceit $ fmap (fmap (\(f, a) -> f a)) $ conceit fs as
+
+instance Alternative (Conceit e) where
+  empty = Conceit $ forever (threadDelay maxBound)
+  Conceit as <|> Conceit bs =
+    Conceit $ fmap (fmap (either id id)) $ race as bs
+
+instance (Semigroup a) => Semigroup (Conceit e a) where
+  c1 <> c2 = (<>) <$> c1 <*> c2
+
+instance (Monoid a) => Monoid (Conceit e a) where
+   mempty = Conceit . pure . pure $ mempty
+   mappend c1 c2 = mappend <$> c1 <*> c2
+
+{-| 
+    Construct a 'Conceit' as if it were a 'Control.Concurrent.Async.Concurrently'.
+-}
+_Conceit :: IO a -> Conceit e a
+_Conceit = Conceit . fmap pure  
+
+{-| 
+      Works similarly to 'Control.Concurrent.Async.mapConcurrently' from the
+@async@ package, but if any of the computations fails with @e@, the others are
+immediately cancelled and the whole computation fails with @e@. 
+ -}
+mapConceit :: (Traversable t) => (a -> IO (Either e b)) -> t a -> IO (Either e (t b))
+mapConceit f = runConceit . sequenceA . fmap (Conceit . f)
+
+catchAll :: IO a -> (SomeException -> IO a) -> IO a
+catchAll = catch
+
+-- Adapted from the race function from async
+race :: IO (Either e a) -> IO (Either e b) -> IO (Either e (Either a b)) 
+race left right = conceit' left right collect
+  where
+    collect m = do
+        e <- takeMVar m
+        case e of
+            Left ex -> throwIO ex
+            Right (Right (Right r1)) -> return $ Right $ Right r1
+            Right (Right (Left e1)) -> return $ Left e1 
+            Right (Left (Right r2)) -> return $ Right $ Left r2 
+            Right (Left (Left e2)) -> return $ Left e2
+
+-- Adapted from the concurrently function from async
+conceit :: IO (Either e a) -> IO (Either e b) -> IO (Either e (a, b))
+conceit left right = conceit' left right (collect [])
+  where
+    collect [Left (Right a), Right (Right b)] _ = return $ Right (a,b)
+    collect [Right (Right b), Left (Right a)] _ = return $ Right (a,b)
+    collect (Left (Left ea):_) _ = return $ Left ea
+    collect (Right (Left eb):_) _ = return $ Left eb
+    collect xs m = do
+        e <- takeMVar m
+        case e of
+            Left ex -> throwIO ex
+            Right r -> collect (r:xs) m
+
+{-| 
+    Verbatim copy of the internal @concurrently'@ function from the @async@
+    package.
+-}
+conceit' :: IO a 
+         -> IO b
+         -> (MVar (Either SomeException (Either a b)) -> IO r)
+         -> IO r
+conceit' left right collect = do
+    done <- newEmptyMVar
+    mask $ \restore -> do
+        lid <- forkIO $ restore (left >>= putMVar done . Right . Left)
+                             `catchAll` (putMVar done . Left)
+        rid <- forkIO $ restore (right >>= putMVar done . Right . Right)
+                             `catchAll` (putMVar done . Left)
+        let stop = killThread rid >> killThread lid
+            -- kill right before left, to match the semantics of
+            -- the version using withAsync.
+        r <- restore (collect done) `Control.Exception.onException` stop
+        stop
+        return r
 
