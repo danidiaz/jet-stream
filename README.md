@@ -34,14 +34,28 @@ In order to achieve those objectives, the following sacrifices have been made:
 
 - Grouping operations are underpowered (In fact, they don't exist right now.)
 
+## What about performance?
+
+I haven't run any benchmarks, but you can safely assume that this library will
+move like a snail compared to
+[streamly](https://hackage.haskell.org/package/streamly)'s Ferrari.
+
+## Acknowledgements
+
+The `Line` type was copied (with some modifications) from Gabriela Gonzalez's
+[turtle](https://hackage.haskell.org/package/turtle).
+
 ## Some close cousins
 
 - [turtle](https://hackage.haskell.org/package/turtle). The `Shell` type kinda
   resembles `Jet`. One possible difference is that `Shell` doesn't seem to
   provide a way for the `Shell` consumer to signal that no further values are
-  needed.
+  needed, at least judging from the docs for
+  [limit](https://hackage.haskell.org/package/turtle-1.5.22/docs/Turtle-Prelude.html#v:limit).
 
-- [streamly](https://hackage.haskell.org/package/streamly). I might have reinvented a subset of streamly ([but worse](https://www.mcmillen.dev/language_checklist.html)).
+- [streamly](https://hackage.haskell.org/package/streamly). I might have
+  reinvented a subset of streamly ([but
+  worse](https://www.mcmillen.dev/language_checklist.html)).
 
 - [Z.IO.BIO](https://hackage.haskell.org/package/Z-IO-1.0.0.0/docs/Z-IO-BIO.html)
   from [Z-IO](https://hackage.haskell.org/package/Z-IO). Like `Jet`, uses a
