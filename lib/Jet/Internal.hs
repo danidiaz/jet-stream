@@ -43,10 +43,12 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 
 import Control.Concurrent
+import Data.IORef
 import Control.Concurrent.STM
 import Control.Concurrent.MVar
 import Control.Concurrent.Conceit
 import Control.Concurrent.STM.TBMQueue
+import Control.Concurrent.Async
 
 newtype Jet a = Jet {
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
@@ -685,17 +687,42 @@ traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
     let PoolConf {_inputQueueSize,_numberOfWorkers,_outputQueueSize} = adaptConf defaultPoolConf
     input <- newTBMQueueIO _inputQueueSize
     output <- newTBMQueueIO _outputQueueSize
-    let worker = do
+    shouldStop <- newIORef False
+    let 
+        -- The inputWriter should not be interrupted aynchronously.
+        inputWriter = do
+            for_ upstream \a -> do
+                atomically $ writeTBMQueue input (makeTask a)
+            atomically $ closeTBMQueue input
+        -- Workers can be interrupted asynchronously.
+        worker = do
             mtask <- atomically $ readTBMQueue input
             case mtask of
                 Nothing -> pure ()
                 Just task -> do
                         result <- task
                         atomically $ writeTBMQueue output result
-        inputReader = do
-            for_ upstream \a -> do
-                atomically $ writeTBMQueue input (makeTask a)
-    undefined
+        outputReader s = do
+            if
+                | stop s -> do
+                  -- tell the inserter from upstream that it should stop. is this enough?
+                  writeIORef shouldStop True
+                  pure s
+                | otherwise -> do
+                  mresult <- atomically $ readTBMQueue output
+                  case mresult of
+                      Nothing -> do
+                        pure s
+                      Just result -> do
+                        !s' <- step s result
+                        outputReader s
+    runConcurrently $
+        Concurrently inputWriter
+        *>
+        Concurrently (replicateConcurrently_ _numberOfWorkers worker)
+        *> 
+        Concurrently (outputReader initial)
+
 
 data PoolConf = PoolConf {
         _inputQueueSize :: Int,
