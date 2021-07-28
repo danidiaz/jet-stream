@@ -682,46 +682,57 @@ singleton a = DList $ (a :)
 --
 -- concurrency
 
+-- TODO: 
+-- under *normal* (not interrupted), how to implement "last worker turns off
+-- the light" behaviour?
 traverseConcurrently :: (PoolConf -> PoolConf) -> (a -> IO b) -> Jet a -> Jet b
 traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
-    let PoolConf {_inputQueueSize,_numberOfWorkers,_outputQueueSize} = adaptConf defaultPoolConf
-    input <- newTBMQueueIO _inputQueueSize
-    output <- newTBMQueueIO _outputQueueSize
-    shouldStop <- newIORef False
-    let 
-        -- The inputWriter should not be interrupted aynchronously.
-        inputWriter = do
-            for_ upstream \a -> do
-                atomically $ writeTBMQueue input (makeTask a)
-            atomically $ closeTBMQueue input
-        -- Workers can be interrupted asynchronously.
-        worker = do
-            mtask <- atomically $ readTBMQueue input
-            case mtask of
-                Nothing -> pure ()
-                Just task -> do
-                        result <- task
-                        atomically $ writeTBMQueue output result
-        outputReader s = do
-            if
-                | stop s -> do
-                  -- tell the inserter from upstream that it should stop. is this enough?
-                  writeIORef shouldStop True
-                  pure s
-                | otherwise -> do
-                  mresult <- atomically $ readTBMQueue output
-                  case mresult of
-                      Nothing -> do
+    if 
+        -- If we know we aren't going to do any work, don't bother starting the
+        -- whole boondoggle.
+        | stop initial ->
+          pure initial
+        | otherwise -> do
+          -- At this point we know we should do at least one step.
+          shouldStop <- newIORef False
+          let PoolConf {_inputQueueSize,_numberOfWorkers,_outputQueueSize} = adaptConf defaultPoolConf
+          input <- newTBMQueueIO _inputQueueSize
+          output <- newTBMQueueIO _outputQueueSize
+          let 
+              -- The inputWriter should *not* be interrupted aynchronously.
+              inputWriter = do
+                  for_ upstream \a -> do
+                      atomically $ writeTBMQueue input (makeTask a)
+                  atomically $ closeTBMQueue input
+              -- Workers can be interrupted asynchronously.
+              worker = do
+                  mtask <- atomically $ readTBMQueue input
+                  case mtask of
+                      Nothing -> pure ()
+                      Just task -> do
+                              result <- task
+                              atomically $ writeTBMQueue output result
+              outputReader s = do
+                  if
+                      | stop s -> do
+                        -- tell the inserter from upstream that it should stop. is this enough?
+                        writeIORef shouldStop True
+                        atomically $ closeTBMQueue input -- perhaps unnecessary?
                         pure s
-                      Just result -> do
-                        !s' <- step s result
-                        outputReader s
-    runConcurrently $
-        Concurrently inputWriter
-        *>
-        Concurrently (replicateConcurrently_ _numberOfWorkers worker)
-        *> 
-        Concurrently (outputReader initial)
+                      | otherwise -> do
+                        mresult <- atomically $ readTBMQueue output
+                        case mresult of
+                            Nothing -> do
+                              pure s
+                            Just result -> do
+                              !s' <- step s result
+                              outputReader s
+          runConcurrently $
+              Concurrently inputWriter
+              *>
+              Concurrently (replicateConcurrently_ _numberOfWorkers worker)
+              *> 
+              Concurrently (outputReader initial)
 
 
 data PoolConf = PoolConf {
