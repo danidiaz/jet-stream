@@ -146,7 +146,7 @@ instance MonadPlus Jet where
 instance MonadFail Jet where
   fail _ = mzero
 
-each :: Foldable f => f a -> Jet a
+each :: forall a f . Foldable f => f a -> Jet a
 each (Data.Foldable.toList -> seed) = Jet \stop step ->
   -- This could be done with Jet.unfold, but let's leave as it is.
   let go b s =
@@ -283,6 +283,7 @@ dropWhileIO p (Jet f) = Jet \stop step initial -> do
   Pair _ final <- f stop' step' initial'
   pure final
 
+
 take :: Int -> Jet a -> Jet a
 take limit (Jet f) = Jet \stop step initial -> do
   let stop' (Pair count s) =
@@ -293,6 +294,10 @@ take limit (Jet f) = Jet \stop step initial -> do
       initial' = Pair 0 initial
   Pair _ final <- f stop' step' initial'
   pure final
+
+-- | Synonym for 'take'.
+limit :: Int -> Jet a -> Jet a
+limit = take
 
 data TakeState = StillTaking | TakingNoMore
 
@@ -684,9 +689,6 @@ singleton a = DList $ (a :)
 
 -- TODO: 
 -- Perhaps the writer shoult wait for the reader to start?
--- TODO: 
--- under *normal* (not interrupted), how to implement "last worker turns off
--- the light" behaviour?
 -- TODO:
 -- It would be nice to have 0-lengh channels for which one side blocks until
 -- the other side takes the job.
@@ -749,24 +751,25 @@ traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
                               pure s
                             Just result -> do
                               !s' <- step s result
-                              outputReader s
+                              outputReader s'
           runConcurrently $
-              Concurrently inputWriter
+              Concurrently do
+                  inputWriter
               *>
               Concurrently do
-                finalE <- do
-                    runConceit $ 
-                        -- The worker pool never kills any thread, but it can be killed.
-                        Conceit (Right <$> replicateConcurrently_ _numberOfWorkers worker)
-                        *> 
-                        -- The worker pool is always killed when the output reader finishes,
-                        -- but for the "happy path" the workers will already be dead.
-                        Conceit (Left <$> outputReader initial)
-                case finalE of
-                  Right () -> do
-                      error "never happens, the Left always wins"
-                  Left final -> do
-                      pure final
+                  finalLeft <- do
+                      runConceit $ 
+                          -- The worker pool is always killed when the output reader finishes,
+                          -- but for the "happy path" the workers will already be dead.
+                          Conceit (Right <$> replicateConcurrently_ _numberOfWorkers worker)
+                          *> 
+                          -- This Left is what kills the worker pool.
+                          Conceit (Left <$> outputReader initial)
+                  case finalLeft of
+                      Right () -> do
+                          error "never happens, the Left always wins"
+                      Left final -> do
+                          pure final
 
 data PoolConf = PoolConf {
         _inputQueueSize :: Int,

@@ -2,6 +2,8 @@
 :set -XTypeApplications
 :set -XFlexibleContexts
 :set -XFlexibleInstances
+:set -XNumDecimals
+:set -XBlockArguments
 :set -fprint-explicit-foralls
 
 import Data.Function ((&))
@@ -11,3 +13,6 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
+import Control.Exception
+import Control.Concurrent
+import System.IO

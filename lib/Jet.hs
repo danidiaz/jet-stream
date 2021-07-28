@@ -28,6 +28,7 @@ module Jet (
         J.filter,
         J.filterIO,
         J.take,
+        J.limit,
         J.takeWhileIO,
         J.drop,
         J.dropWhile,
@@ -67,17 +68,18 @@ module Jet (
         J.lineToText,
         J.textToLine,
         J.withLineText,
+        -- * Concurrency
+        traverseConcurrently,
+        PoolConf,
+        inputQueueSize,
+        numberOfWorkers,
+        outputQueueSize,
         -- * Conversion helpers
         J.JetSource (..),
         J.JetTarget (..),
         J.Funnel (..),
         J.File (..),
         J.Utf8 (..),
-        -- * Concurrency
-        PoolConf,
-        inputQueueSize,
-        numberOfWorkers,
-        outputQueueSize,
         -- * Re-exports
         stdin,
         stdout,

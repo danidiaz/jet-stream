@@ -10,11 +10,11 @@ description:
   Basic operations like `drop` and `take` are supported.
 
   The `Functor`, `Applicative` and `Monad` instances of the stream type
-  resemble those of pure lists. There are also `Alternative`/`MonadPlus`
-  instances for stream concatenation.
+  resemble those of pure lists. There are also
+  `Monoid`/`Alternative`/`MonadPlus` instances for stream concatenation.
 
-  Typical `IO` resource-managing operations like `withFile` can be easily
-  lifted to streams.
+  Typical resource-managing operations like `withFile` can be easily used with
+  the streams.
 
   For expressive and composable terminal operations, streams can be consumed
   with folds from the "foldl" library.
