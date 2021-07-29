@@ -703,20 +703,20 @@ traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
           -- At this point we know we should do at least one step.
           let PoolConf {_inputQueueSize,_numberOfWorkers,_outputQueueSize} = adaptConf defaultPoolConf
           input <- newTBMQueueIO _inputQueueSize
-          inputShouldStop <- newIORef False
+          inputQueueWriterShouldStop <- newIORef False
           aliveWorkers <- newIORef _numberOfWorkers
           output <- newTBMQueueIO _outputQueueSize
           let 
-              -- The inputWriter should *not* be interrupted aynchronously.
+              -- The inputQueueWriter should *not* be interrupted aynchronously.
               -- After each iteration, it reads the IORef to see if it should stop.
               -- Once it stops, it closes the input queue.
-              inputWriter = do
+              inputQueueWriter = do
                   run 
                     upstream 
                     id 
                     (\_ a -> do
                         atomically $ writeTBMQueue input (makeTask a)
-                        readIORef inputShouldStop) 
+                        readIORef inputQueueWriterShouldStop) 
                     False
                   atomically $ closeTBMQueue input
               -- Workers *can* be interrupted asynchronously.
@@ -737,11 +737,11 @@ traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
                         result <- task
                         atomically $ writeTBMQueue output result
                         worker
-              outputReader s = do
+              outputQueueReader s = do
                   if
                       | stop s -> do
                         -- tell the inserter from upstream that it should stop. is this enough?
-                        writeIORef inputShouldStop True
+                        writeIORef inputQueueWriterShouldStop True
                         atomically $ closeTBMQueue input -- perhaps unnecessary?
                         pure s
                       | otherwise -> do
@@ -751,10 +751,10 @@ traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
                               pure s
                             Just result -> do
                               !s' <- step s result
-                              outputReader s'
+                              outputQueueReader s'
           runConcurrently $
               Concurrently do
-                  inputWriter
+                  inputQueueWriter
               *>
               Concurrently do
                   finalLeft <- do
@@ -764,7 +764,7 @@ traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
                           Conceit (Right <$> replicateConcurrently_ _numberOfWorkers worker)
                           *> 
                           -- This Left is what kills the worker pool.
-                          Conceit (Left <$> outputReader initial)
+                          Conceit (Left <$> outputQueueReader initial)
                   case finalLeft of
                       Right () -> do
                           error "never happens, the Left always wins"
