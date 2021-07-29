@@ -74,6 +74,7 @@ module Jet (
         inputQueueSize,
         numberOfWorkers,
         outputQueueSize,
+        poolDefaults,
         -- * Conversion helpers
         J.JetSource (..),
         J.JetTarget (..),

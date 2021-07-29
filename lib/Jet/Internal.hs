@@ -792,3 +792,6 @@ numberOfWorkers number poolConf = poolConf { _numberOfWorkers = number }
 outputQueueSize :: Int -> PoolConf -> PoolConf 
 outputQueueSize size poolConf = poolConf { _outputQueueSize = size }
 
+poolDefaults :: PoolConf -> PoolConf 
+poolDefaults = id
+
