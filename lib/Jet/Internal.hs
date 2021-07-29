@@ -546,6 +546,9 @@ textToLine text
     | Just _ <- T.find (=='\n') text = error "text for a line can't contain newlines!"
     | otherwise = Line_ (removeTrailingCarriageReturn text)
 
+stringToLine :: String -> Line
+stringToLine = textToLine . T.pack
+
 withLineText :: (Text -> r) -> Line -> r
 withLineText f (Line text) = f text 
 
@@ -794,4 +797,10 @@ outputQueueSize size poolConf = poolConf { _outputQueueSize = size }
 
 poolDefaults :: PoolConf -> PoolConf 
 poolDefaults = id
+
+--
+--
+--
+  
+
 

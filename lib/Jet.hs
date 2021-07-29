@@ -66,8 +66,10 @@ module Jet (
         J.lines,
         J.Line (Line),
         J.lineToText,
-        J.textToLine,
         J.withLineText,
+        -- ** These are partial functions
+        J.textToLine,
+        J.stringToLine,
         -- * Concurrency
         traverseConcurrently,
         PoolConf,
