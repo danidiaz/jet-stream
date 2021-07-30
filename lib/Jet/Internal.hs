@@ -835,8 +835,11 @@ recast (MealyIO mealyStep mealyBegin mealyCoda)
 
 -- | Very much like a @FoldM IO@  from the
 -- [foldl](https://hackage.haskell.org/package/foldl-1.4.12/docs/Control-Foldl.html#t:FoldM)
--- library, but \"restartable\" with multiple starting conditions.
+-- library, but \"restartable\" with a list of starting conditions.
 --
+-- For converting one into the other, this function should do the trick:
+--
+-- > \(L.FoldM step allocator coda) -> combiners step (Prelude.repeat allocator) coda
 data Combiners a b where 
     Combiners :: (s -> a -> IO s) -> [IO s] -> (s -> IO b) -> Combiners a b
 
@@ -845,14 +848,17 @@ combiners = combiners
 
 type Splitter a b = MealyIO a (SplitStepResult b)
 
--- | A [Mealy machine](https://en.wikipedia.org/wiki/Mealy_machine). Much like
--- a 'ExposedFoldIO' but it emits an output at each step, not only at the end.
+-- | A [Mealy machine](https://en.wikipedia.org/wiki/Mealy_machine).  
+--
+-- Very much like a @FoldM IO@  from the
+-- [foldl](https://hackage.haskell.org/package/foldl-1.4.12/docs/Control-Foldl.html#t:FoldM)
+-- library, but it emits an output at each step, not only at the end.
 data MealyIO a b where
     MealyIO :: (s -> a -> IO (s,b)) -> IO s -> (s -> IO b) ->  MealyIO a b
 
 data SplitStepResult b = SplitStepResult {
      continuesPreviousGroup :: [b],
-     entireGroupsAndStartOfNewOne :: Maybe ([[b]],[b])
+     yieldsEntireGroupsAndBeginsNextOne :: Maybe ([[b]],[b])
   }
 
 
