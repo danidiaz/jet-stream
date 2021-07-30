@@ -86,11 +86,11 @@ module Jet (
         -- * Some complicated stuff
         -- $complicated
         recast,
-        FoldIO(..),
+        Splitter (..),
         MealyIO(..),
         SplitStepResult(..),
-        Succession,
-        succession,
+        Combiners,
+        combiners,
         -- * Re-exports
         stdin,
         stdout,

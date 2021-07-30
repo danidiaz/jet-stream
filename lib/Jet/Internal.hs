@@ -806,43 +806,47 @@ defaults = id
 --
 -- complicated stufff
 
--- data RecastState = OutsideGroup !foldList
---                  | WithinGroup  
+data RecastState s a b = OutsideGroup [IO s]
+                       | WithinGroup !s [IO s]
 
-recast :: MealyIO a (SplitStepResult b) -> Succession FoldIO b c -> Jet a -> Jet b
-recast (MealyIO mealyStep mealyBegin mealyCoda) (Succession listOfFolds) (Jet upstream) = Jet \stop step initial -> do
+recast :: Splitter a b -> Combiners b c -> Jet a -> Jet c
+recast (MealyIO mealyStep mealyBegin mealyCoda) 
+       (Combiners foldStep allocators foldCoda) 
+       (Jet upstream) = Jet \stop step initial -> do
   let -- When to stop? Either downstream requests the stop, or we run out of folds with which to process.
-      stop' (Pair [] _) = True
       stop' (Pair _  s) = stop s  
-      step' (Pair recastState s) a = undefined
-      initial' = Pair listOfFolds initial
+      -- stop' (Pair _  s) = stop s  
+      step' _ _ = undefined
+      initial' = Pair (OutsideGroup allocators) initial
   Pair finalListOfFolds final <- upstream stop' step' initial'
   if 
     | stop final  -> do
       pure final
     | otherwise -> do
-      case finalListOfFolds of
-        [] -> do
-            pure final
-        FoldIO foldStep foldStartAction foldCoda : _ -> do
-            undefined
-            -- foldInitial <- foldStartAction
-            -- finalFoldState <- downstream stop foldStep  
-            -- undefined
+      undefined
+--       case finalListOfFolds of
+--         [] -> do
+--             pure final
+--         ExposedFoldIO foldStep foldStartAction foldCoda : _ -> do
+--             undefined
+--             -- foldInitial <- foldStartAction
+--             -- finalFoldState <- downstream stop foldStep  
+--             -- undefined
 
--- | Just a mere wrapper over lists, with a non-exported constructor.
+-- | Very much like a @FoldM IO@  from the
+-- [foldl](https://hackage.haskell.org/package/foldl-1.4.12/docs/Control-Foldl.html#t:FoldM)
+-- library, but \"restartable\" with multiple starting conditions.
+--
+data Combiners a b where 
+    Combiners :: (s -> a -> IO s) -> [IO s] -> (s -> IO b) -> Combiners a b
 
-data Succession f a b where 
-    Succession :: [f s a b] -> Succession f a b
+combiners :: (s -> a -> IO s) -> [IO s] -> (s -> IO b) -> Combiners a b
+combiners = combiners
 
-succession :: [f s a b] -> Succession f a b
-succession = Succession
-
-data FoldIO s a b where
-    FoldIO :: (s -> a -> IO s) -> IO s -> (s -> IO b) -> FoldIO s a b
+type Splitter a b = MealyIO a (SplitStepResult b)
 
 -- | A [Mealy machine](https://en.wikipedia.org/wiki/Mealy_machine). Much like
--- a 'FoldIO' but it emits an output at each step, not only at the end.
+-- a 'ExposedFoldIO' but it emits an output at each step, not only at the end.
 data MealyIO a b where
     MealyIO :: (s -> a -> IO (s,b)) -> IO s -> (s -> IO b) ->  MealyIO a b
 
