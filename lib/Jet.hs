@@ -76,17 +76,19 @@ module Jet (
         inputQueueSize,
         numberOfWorkers,
         outputQueueSize,
-        poolDefaults,
+        defaults,
         -- * Conversion helpers
         J.JetSource (..),
         J.JetTarget (..),
         J.Funnel (..),
         J.File (..),
         J.Utf8 (..),
-        -- * Complicated stuff
+        -- * Some complicated stuff
         -- $complicated
+        recast,
         FoldIO(..),
         MealyIO(..),
+        SplitStepResult(..),
         Succession,
         succession,
         -- * Re-exports

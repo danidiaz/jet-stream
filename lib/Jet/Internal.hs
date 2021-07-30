@@ -798,12 +798,22 @@ numberOfWorkers number poolConf = poolConf { _numberOfWorkers = number }
 outputQueueSize :: Int -> PoolConf -> PoolConf 
 outputQueueSize size poolConf = poolConf { _outputQueueSize = size }
 
-poolDefaults :: PoolConf -> PoolConf 
-poolDefaults = id
+defaults :: a -> a
+defaults = id
 
 --
 --
 -- complicated stufff
+
+recast :: MealyIO a (SplitStepResult b) -> Succession (FoldIO b c) -> Jet a -> Jet b
+recast (MealyIO mealyStep mealyBegin mealyCoda) (Succession listOfFolds) (Jet upstream) = Jet \stop step initial -> 
+    undefined
+
+-- | Just a mere wrapper over lists, with a non-exported constructor.
+newtype Succession a = Succession [a]
+
+succession :: [a] -> Succession a
+succession = Succession
 
 -- | Morally, this type should not exist and we would use @Control.Foldl.FoldM
 -- IO@ instead, but I didn't want to depend directly on the
@@ -822,11 +832,11 @@ data FoldIO a b where
 data MealyIO a b where
     MealyIO :: (s -> a -> IO (b,s)) -> IO s -> (s -> IO b) ->  MealyIO a b
 
--- | Just a mere wrapper over lists, with a non-exported constructor.
-newtype Succession a = Succession [a]
+data SplitStepResult b = SplitStepResult {
+     continuesPreviousGroup :: [b],
+     entireGroupsAndStartOfNewOne :: Maybe ([[b]],[b])
+  }
 
-succession :: [a] -> Succession a
-succession = Succession
 
 -- TODO: passLines (passUtf8 (throughProcess defaults "shell foo"))
 
