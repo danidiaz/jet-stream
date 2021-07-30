@@ -830,7 +830,7 @@ data FoldIO a b where
 -- | A [Mealy machine](https://en.wikipedia.org/wiki/Mealy_machine). Much like
 -- a 'FoldIO' but it emits an output at each step, not only at the end.
 data MealyIO a b where
-    MealyIO :: (s -> a -> IO (b,s)) -> IO s -> (s -> IO b) ->  MealyIO a b
+    MealyIO :: (s -> a -> IO (s,b)) -> IO s -> (s -> IO b) ->  MealyIO a b
 
 data SplitStepResult b = SplitStepResult {
      continuesPreviousGroup :: [b],
