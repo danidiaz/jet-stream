@@ -18,6 +18,9 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE GADTSyntax #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Jet.Internal where
 
@@ -800,7 +803,30 @@ poolDefaults = id
 
 --
 --
---
-  
+-- complicated stufff
 
+-- | Morally, this type should not exist and we would use @Control.Foldl.FoldM
+-- IO@ instead, but I didn't want to depend directly on the
+-- [foldl](https://hackage.haskell.org/package/foldl-1.4.12/docs/Control-Foldl.html#t:FoldM)
+-- library.
+--
+-- If you want to use a @FoldM@ as a @FoldIO@, the conversion function would be:
+--
+-- > convert :: FoldM IO -> FoldIO
+-- > convert (FoldM step begin coda) = FoldIO step begin coda
+data FoldIO a b where
+    FoldIO :: (s -> a -> IO s) -> IO s -> (s -> IO b) -> FoldIO a b
+
+-- | A [Mealy machine](https://en.wikipedia.org/wiki/Mealy_machine). Much like
+-- a 'FoldIO' but it emits an output at each step, not only at the end.
+data MealyIO a b where
+    MealyIO :: (s -> a -> IO (b,s)) -> IO s -> (s -> IO b) ->  MealyIO a b
+
+-- | Just a mere wrapper over lists, with a non-exported constructor.
+newtype Succession a = Succession [a]
+
+succession :: [a] -> Succession a
+succession = Succession
+
+-- TODO: passLines (passUtf8 (throughProcess defaults "shell foo"))
 

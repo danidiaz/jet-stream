@@ -83,6 +83,12 @@ module Jet (
         J.Funnel (..),
         J.File (..),
         J.Utf8 (..),
+        -- * Complicated stuff
+        -- $complicated
+        FoldIO(..),
+        MealyIO(..),
+        Succession,
+        succession,
         -- * Re-exports
         stdin,
         stdout,
@@ -104,4 +110,9 @@ import Data.Functor ((<&>))
 -- It's not possible to zip two 'Jet's together. But 'Jet's can be zipped with
 -- pure lists, or with lists of 'IO' actions.
 --
+--
+
+-- $complicated
+--
+-- I didn't manage to make this stuff simpler.
 --
