@@ -21,6 +21,7 @@
 {-# LANGUAGE GADTSyntax #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneKindSignatures #-}
 
 module Jet.Internal where
 
@@ -805,27 +806,40 @@ defaults = id
 --
 -- complicated stufff
 
-recast :: MealyIO a (SplitStepResult b) -> Succession (FoldIO b c) -> Jet a -> Jet b
-recast (MealyIO mealyStep mealyBegin mealyCoda) (Succession listOfFolds) (Jet upstream) = Jet \stop step initial -> 
-    undefined
+-- data RecastState = OutsideGroup !foldList
+--                  | WithinGroup  
+
+recast :: MealyIO a (SplitStepResult b) -> Succession FoldIO b c -> Jet a -> Jet b
+recast (MealyIO mealyStep mealyBegin mealyCoda) (Succession listOfFolds) (Jet upstream) = Jet \stop step initial -> do
+  let -- When to stop? Either downstream requests the stop, or we run out of folds with which to process.
+      stop' (Pair [] _) = True
+      stop' (Pair _  s) = stop s  
+      step' (Pair recastState s) a = undefined
+      initial' = Pair listOfFolds initial
+  Pair finalListOfFolds final <- upstream stop' step' initial'
+  if 
+    | stop final  -> do
+      pure final
+    | otherwise -> do
+      case finalListOfFolds of
+        [] -> do
+            pure final
+        FoldIO foldStep foldStartAction foldCoda : _ -> do
+            undefined
+            -- foldInitial <- foldStartAction
+            -- finalFoldState <- downstream stop foldStep  
+            -- undefined
 
 -- | Just a mere wrapper over lists, with a non-exported constructor.
-newtype Succession a = Succession [a]
 
-succession :: [a] -> Succession a
+data Succession f a b where 
+    Succession :: [f s a b] -> Succession f a b
+
+succession :: [f s a b] -> Succession f a b
 succession = Succession
 
--- | Morally, this type should not exist and we would use @Control.Foldl.FoldM
--- IO@ instead, but I didn't want to depend directly on the
--- [foldl](https://hackage.haskell.org/package/foldl-1.4.12/docs/Control-Foldl.html#t:FoldM)
--- library.
---
--- If you want to use a @FoldM@ as a @FoldIO@, the conversion function would be:
---
--- > convert :: FoldM IO -> FoldIO
--- > convert (FoldM step begin coda) = FoldIO step begin coda
-data FoldIO a b where
-    FoldIO :: (s -> a -> IO s) -> IO s -> (s -> IO b) -> FoldIO a b
+data FoldIO s a b where
+    FoldIO :: (s -> a -> IO s) -> IO s -> (s -> IO b) -> FoldIO s a b
 
 -- | A [Mealy machine](https://en.wikipedia.org/wiki/Mealy_machine). Much like
 -- a 'FoldIO' but it emits an output at each step, not only at the end.
