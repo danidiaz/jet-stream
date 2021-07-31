@@ -813,9 +813,11 @@ recast :: Splitter a b -> Combiners b c -> Jet a -> Jet c
 recast (MealyIO mealyStep mealyBegin mealyCoda) 
        (Combiners foldStep allocators foldCoda) 
        (Jet upstream) = Jet \stop step initial -> do
-  let -- When to stop? Either downstream requests the stop, or we run out of folds with which to process.
+  let -- When to stop? Either downstream says we need to stop,
+      -- or we are outside a group and there isn't another group consumer we
+      -- can use to process the next one.
+      stop' (Pair (OutsideGroup []) _) = True
       stop' (Pair _  s) = stop s  
-      -- stop' (Pair _  s) = stop s  
       step' _ _ = undefined
       initial' = Pair (OutsideGroup allocators) initial
   Pair finalListOfFolds final <- upstream stop' step' initial'
@@ -857,7 +859,11 @@ data MealyIO a b where
     MealyIO :: (s -> a -> IO (s,b)) -> IO s -> (s -> IO b) ->  MealyIO a b
 
 data SplitStepResult b = SplitStepResult {
+     -- | INVARIANT: we should only continue a previous group if we have already
+     -- began a \"next one\" with one or more elements.
      continuesPreviousGroup :: [b],
+     -- | INVARIANT: when we are in the final step, we should not yield elements
+     -- for the beginning of a "\next one\".
      yieldsEntireGroupsAndBeginsNextOne :: Maybe ([[b]],[b])
   }
 
