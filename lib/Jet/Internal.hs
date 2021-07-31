@@ -837,7 +837,7 @@ throughProcess  adaptConf procSpec (Jet upstream) = Jet \stop step initial -> do
                 _runConceit $ 
                 _Conceit undefined
                 *> 
-                _Conceit undefined
+                (_Conceit $ jet @Line stderr' & drain)
                 *> 
                 _Conceit undefined
             pure final
