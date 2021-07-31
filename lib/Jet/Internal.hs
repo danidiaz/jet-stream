@@ -54,6 +54,7 @@ import Control.Concurrent.MVar
 import Control.Concurrent.Conceit
 import Control.Concurrent.STM.TBMQueue
 import Control.Concurrent.Async
+import System.Process
 
 newtype Jet a = Jet {
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
@@ -808,6 +809,41 @@ outputQueueSize size poolConf = poolConf { _outputQueueSize = size }
 
 defaults :: a -> a
 defaults = id
+
+-- 
+-- process invocation
+
+-- data ShouldKillProcess = YeahKillProcess
+--                        | NahDoNotKillProces
+
+throughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet ByteString -> Jet ByteString
+throughProcess  adaptConf procSpec (Jet upstream) = Jet \stop step initial -> do
+    let ProcConf {_bufferStdin} = adaptConf defaultProcConf
+    if 
+        -- If we know we aren't going to do any work, don't bother starting the
+        -- whole boondoggle.
+        | stop initial ->
+          pure initial
+        | otherwise -> do
+          let procSpec' = procSpec {
+                    std_in = CreatePipe,
+                    std_out = CreatePipe,
+                    std_err = CreatePipe
+                }
+          -- remember to drain stderr concurrently with stdout...
+          withCreateProcess procSpec' undefined
+
+data ProcConf = ProcConf {
+        _bufferStdin :: Bool
+    }
+
+defaultProcConf :: ProcConf 
+defaultProcConf = ProcConf {
+        _bufferStdin = False
+    }
+
+bufferStdin :: Bool -> ProcConf -> ProcConf
+bufferStdin doBuffering procConf = procConf { _bufferStdin = doBuffering }
 
 --
 --

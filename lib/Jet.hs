@@ -78,6 +78,10 @@ module Jet (
         numberOfWorkers,
         outputQueueSize,
         defaults,
+        -- * Process invocation
+        throughProcess,
+        ProcConf,
+        bufferStdin,
         -- * Conversion helpers
         J.JetSource (..),
         J.JetSink (..),
@@ -97,11 +101,14 @@ module Jet (
         stdin,
         stdout,
         stderr,
+        proc,
+        shell,
         (&),
         (<&>),
     ) where
 
 import System.IO (stdin, stdout, stderr)
+import System.Process
 
 import Jet.Internal
 import Jet.Internal qualified as J
