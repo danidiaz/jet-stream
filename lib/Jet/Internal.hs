@@ -869,4 +869,6 @@ data SplitStepResult b = SplitStepResult {
 
 
 -- TODO: passLines (passUtf8 (throughProcess defaults "shell foo"))
+-- TODO: Sink instead of Funnel ?
+-- TODO: funnel instead of pass ?
 
