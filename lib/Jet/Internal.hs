@@ -831,10 +831,20 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
         Pair recastState' s' <- advanceRecast splitResult recastState s 
         pure (Triple splitterState' recastState' s')
       advanceRecast ssr@(SplitStepResult {continuesPreviousGroup, entireGroups, beginsNextGroup}) (RecastState areWeInside foldAllocs) s = do
-        case areWeInside of
-            InsideGroup foldState -> do          
-                undefined
-            OutsideGroup -> do
+        case (areWeInside, entireGroups, beginsNextGroup) of
+            -- If there aren't any new groups and we don't start an incomplete one, just advance the current fold
+            (InsideGroup foldState, [], []) -> do          
+                foldState' <- advanceGroupWithougClosing foldState continuesPreviousGroup
+                pure (Pair (RecastState (InsideGroup foldState') foldAllocs) s) -- main state didn't change
+            (InsideGroup foldState,  _, _) -> do          
+                !c <- processSingleGroup foldState continuesPreviousGroup 
+                !s' <- step s c
+                if 
+                    | stop s' -> do
+                        pure (Pair (RecastState OutsideGroup foldAllocs) s')
+                    | otherwise -> do
+                        advanceRecast ssr (RecastState OutsideGroup foldAllocs) s'
+            (OutsideGroup, _, _) -> do
                 -- doens't return foldState becasue we close the groups
                 Pair foldAllocs' s' <- processEntireGroups foldAllocs s entireGroups 
                 bail <- pure (Pair (RecastState OutsideGroup foldAllocs') s')
@@ -854,11 +864,13 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
                                         !foldState0 <- alloc
                                         foldState <- processBeginNextGroup foldState0 beginsNextGroup
                                         pure (Pair (RecastState (InsideGroup foldState) allocs) s')
-      -- withSplitStepResult x (SplitStepResult {continuesPreviousGroup,entireGroups, beginsNextGroup}) = do
-      --   undefined
-      shouldClosePreviousGroup :: SplitStepResult _ -> Bool
-      shouldClosePreviousGroup (SplitStepResult {entireGroups = [] ,beginsNextGroup = []}) = True
-      shouldClosePreviousGroup (SplitStepResult {}) = False
+      -- foldM ?
+      advanceGroupWithougClosing :: _ -> [b] -> IO _
+      advanceGroupWithougClosing foldState [] = 
+        pure foldState
+      advanceGroupWithougClosing foldState (b:bs) = do
+        !foldState' <- foldStep foldState b
+        advanceGroupWithougClosing foldState' bs
       processEntireGroups :: [IO _] -> _ -> [[b]] -> IO (Pair [IO _] _)
       -- We can't go on if there aren't any more groups
       processEntireGroups allocs s [] = do
@@ -881,7 +893,7 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
         foldCoda foldState
       processSingleGroup foldState (b:bs) = do
         !foldState' <- foldStep foldState b
-        processSingleGroup foldState bs
+        processSingleGroup foldState' bs
       processBeginNextGroup :: _ -> [b] -> IO _
       processBeginNextGroup foldState [] = do
         pure foldState
@@ -889,21 +901,14 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
         !foldState' <- foldStep foldState b
         processBeginNextGroup foldState bs
       initial' = Triple initialSplitterState (RecastState OutsideGroup foldAllocs0) initial
-  Triple _ _ final <- upstream stop' step' initial'
-  -- TODO: complete the finisher!
+  Triple splitterState recastState final <- upstream stop' step' initial'
   if 
     | stop final  -> do
       pure final
     | otherwise -> do
-      undefined
---       case finalListOfFolds of
---         [] -> do
---             pure final
---         ExposedFoldIO foldStep foldStartAction foldCoda : _ -> do
---             undefined
---             -- foldInitial <- foldStartAction
---             -- finalFoldState <- downstream stop foldStep  
---             -- undefined
+      splitResult <- splitterCoda splitterState
+      Pair _ final' <- advanceRecast (splitResult { beginsNextGroup = [] }) recastState final
+      pure final'
 
 -- | Very much like a @FoldM IO@  from the
 -- [foldl](https://hackage.haskell.org/package/foldl-1.4.12/docs/Control-Foldl.html#t:FoldM)
