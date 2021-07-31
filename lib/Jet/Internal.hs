@@ -248,6 +248,10 @@ pairExtract (Pair _ b) = b
 
 pairEnv (Pair a _) = a
 
+data Triple a b c = Triple !a !b !c
+
+tripleExtract (Triple _ _ c) = c
+
 -- fromTuple :: (a, b) -> Pair a b
 -- fromTuple (a, b) -> Pair a b
 
@@ -810,7 +814,7 @@ defaults = id
 data AreWeInsideGroup foldState = OutsideGroup
                                 | InsideGroup !foldState 
         
-data RecastState splitterState foldState = RecastState !splitterState !(AreWeInsideGroup foldState) [IO foldState] 
+data RecastState foldState = RecastState !(AreWeInsideGroup foldState) [IO foldState] 
 
 recast :: forall a b c . Splitter a b -> Combiners b c -> Jet a -> Jet c
 recast (MealyIO splitterStep splitterAlloc splitterCoda) 
@@ -820,23 +824,18 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
   let -- When to stop? Either downstream says we need to stop,
       -- or we are outside a group and there isn't another group consumer we
       -- can use to process the next one.
-      stop' (Pair (RecastState  _ OutsideGroup []) _) = True
-      stop' (Pair _ s) = stop s  
-      step' (Pair (RecastState splitterState areWeInsideGroup foldAllocs) s) a = do
+      stop' (Triple _ (RecastState OutsideGroup []) _) = True
+      stop' (Triple _ _ s) = stop s  
+      step' (Triple splitterState (RecastState (InsideGroup foldState) foldAllocs) s) a = do
+        undefined
+      step' (Triple splitterState (RecastState OutsideGroup foldAllocs) s) a = do
         -- we don't bother cheking if we contiue the previous group! See SplitStepResult invariants.
-        (splitterState',ssr@SplitStepResult {continuesPreviousGroup,entireGroups, beginsNextGroup}) <- splitterStep splitterState a 
+        (splitterState',ssr@SplitStepResult {entireGroups, beginsNextGroup}) <- splitterStep splitterState a 
         -- splitterState' doesn't change below this
-        s' <- if 
-           | shouldClosePreviousGroup ssr -> do
-             c <- processSingleGroup undefined continuesPreviousGroup
-             step s c
-           | otherwise -> do
-             pure s
-        -- TODO re-check state after this
-        Pair foldAllocs' s'' <- processEntireGroups foldAllocs s' entireGroups -- doens't return foldState becasue we close the groups
-        bail <- pure (Pair (RecastState splitterState' OutsideGroup foldAllocs') s'')
+        Pair foldAllocs' s' <- processEntireGroups foldAllocs s entireGroups -- doens't return foldState becasue we close the groups
+        bail <- pure (Triple splitterState' (RecastState OutsideGroup foldAllocs') s')
         if 
-            | stop s'' -> do
+            | stop s' -> do
               pure bail
             | otherwise -> do
                 case beginsNextGroup of
@@ -850,19 +849,11 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
                                 -- there is a next group, so let's begin it
                                 !foldState0 <- alloc
                                 foldState <- processBeginNextGroup foldState0 beginsNextGroup
-                                pure (Pair (RecastState splitterState' (InsideGroup foldState) allocs) s'')
-        -- case yieldsEntireGroupsAndBeginsNextOne of
-        --     Nothing -> do
-        --         -- not much to do here... only the splitter state changes
-        --         pure (Pair (RecastState splitterState' OutsideGroup (alloc : allocators)) s)
-        --     Just 
-        -- initialFoldState <- alloc
-        -- splitState0 <- alloc
-        -- splitState <- mealyBegin 
-      step' (Pair (RecastState splitterState (InsideGroup foldState) allocators) s) a = do
-        undefined
-      step' (Pair _ s) a = 
+                                pure (Triple splitterState' (RecastState (InsideGroup foldState) allocs) s')
+      step' (Triple _ _ s) a = 
         error "impossible state during recast"
+      -- withSplitStepResult x (SplitStepResult {continuesPreviousGroup,entireGroups, beginsNextGroup}) = do
+      --   undefined
       shouldClosePreviousGroup :: SplitStepResult _ -> Bool
       shouldClosePreviousGroup (SplitStepResult {entireGroups = [] ,beginsNextGroup = []}) = True
       shouldClosePreviousGroup (SplitStepResult {}) = False
@@ -895,8 +886,8 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
       processBeginNextGroup foldState (b:bs) = do
         !foldState' <- foldStep foldState b
         processBeginNextGroup foldState bs
-      initial' = Pair (RecastState initialSplitterState OutsideGroup foldAllocs0) initial
-  Pair _ final <- upstream stop' step' initial'
+      initial' = Triple initialSplitterState (RecastState OutsideGroup foldAllocs0) initial
+  Triple _ _ final <- upstream stop' step' initial'
   -- TODO: complete the finisher!
   if 
     | stop final  -> do
