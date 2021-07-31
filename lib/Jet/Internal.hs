@@ -835,6 +835,8 @@ throughProcess  adaptConf procSpec (Jet upstream) = Jet \stop step initial -> do
             when (not _bufferStdin) (System.IO.hSetBuffering  stdin' System.IO.NoBuffering)
             final <- 
                 _runConceit $ 
+                -- what about the principle "never interrupt upstream" ?
+                -- perhaps use a closeable channel?
                 _Conceit undefined
                 *> 
                 (_Conceit $ jet @Line stderr' & drain)
@@ -843,7 +845,7 @@ throughProcess  adaptConf procSpec (Jet upstream) = Jet \stop step initial -> do
             pure final
 
 data ProcConf = ProcConf {
-        _bufferStdin :: Bool
+        _bufferStdin :: Bool,
     }
 
 defaultProcConf :: ProcConf 
