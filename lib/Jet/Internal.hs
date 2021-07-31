@@ -826,32 +826,34 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
       -- can use to process the next one.
       stop' (Triple _ (RecastState OutsideGroup []) _) = True
       stop' (Triple _ _ s) = stop s  
-      step' (Triple splitterState (RecastState (InsideGroup foldState) foldAllocs) s) a = do
-        undefined
-      step' (Triple splitterState (RecastState OutsideGroup foldAllocs) s) a = do
-        -- we don't bother cheking if we contiue the previous group! See SplitStepResult invariants.
-        (splitterState',ssr@SplitStepResult {entireGroups, beginsNextGroup}) <- splitterStep splitterState a 
-        -- splitterState' doesn't change below this
-        Pair foldAllocs' s' <- processEntireGroups foldAllocs s entireGroups -- doens't return foldState becasue we close the groups
-        bail <- pure (Triple splitterState' (RecastState OutsideGroup foldAllocs') s')
-        if 
-            | stop s' -> do
-              pure bail
-            | otherwise -> do
-                case beginsNextGroup of
-                    [] -> do
+      step' (Triple splitterState recastState s) a = do
+        (splitterState', splitResult) <- splitterStep splitterState a 
+        Pair recastState' s' <- advanceRecast splitResult recastState s 
+        pure (Triple splitterState' recastState' s')
+      advanceRecast (SplitStepResult {continuesPreviousGroup, entireGroups, beginsNextGroup}) (RecastState areWeInside foldAllocs) s = do
+        case areWeInside of
+            InsideGroup foldState -> do          
+                undefined
+            OutsideGroup -> do
+                -- doens't return foldState becasue we close the groups
+                Pair foldAllocs' s' <- processEntireGroups foldAllocs s entireGroups 
+                bail <- pure (Pair (RecastState OutsideGroup foldAllocs') s')
+                if 
+                    | stop s' -> do
                       pure bail
-                    (_ : _) -> do
-                        case foldAllocs of
+                    | otherwise -> do
+                        case beginsNextGroup of
                             [] -> do
-                                pure bail
-                            alloc : allocs -> do
-                                -- there is a next group, so let's begin it
-                                !foldState0 <- alloc
-                                foldState <- processBeginNextGroup foldState0 beginsNextGroup
-                                pure (Triple splitterState' (RecastState (InsideGroup foldState) allocs) s')
-      step' (Triple _ _ s) a = 
-        error "impossible state during recast"
+                              pure bail
+                            (_ : _) -> do
+                                case foldAllocs of
+                                    [] -> do
+                                        pure bail
+                                    alloc : allocs -> do
+                                        -- there is a next group, so let's begin it
+                                        !foldState0 <- alloc
+                                        foldState <- processBeginNextGroup foldState0 beginsNextGroup
+                                        pure (Pair (RecastState (InsideGroup foldState) allocs) s')
       -- withSplitStepResult x (SplitStepResult {continuesPreviousGroup,entireGroups, beginsNextGroup}) = do
       --   undefined
       shouldClosePreviousGroup :: SplitStepResult _ -> Bool
