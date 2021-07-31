@@ -1,0 +1,3 @@
+- ignore: {name: "Redundant multi-way if"} 
+
+
