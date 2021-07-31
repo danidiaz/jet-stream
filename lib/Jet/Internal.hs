@@ -830,7 +830,7 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
         (splitterState', splitResult) <- splitterStep splitterState a 
         Pair recastState' s' <- advanceRecast splitResult recastState s 
         pure (Triple splitterState' recastState' s')
-      advanceRecast (SplitStepResult {continuesPreviousGroup, entireGroups, beginsNextGroup}) (RecastState areWeInside foldAllocs) s = do
+      advanceRecast ssr@(SplitStepResult {continuesPreviousGroup, entireGroups, beginsNextGroup}) (RecastState areWeInside foldAllocs) s = do
         case areWeInside of
             InsideGroup foldState -> do          
                 undefined
