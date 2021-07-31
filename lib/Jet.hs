@@ -1,4 +1,5 @@
 {-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE PatternSynonyms #-}
 module Jet (
         -- * The Jet type
         Jet,
@@ -79,10 +80,11 @@ module Jet (
         defaults,
         -- * Conversion helpers
         J.JetSource (..),
-        J.JetTarget (..),
-        J.Funnel (..),
+        J.JetSink (..),
+        J.Sink (..),
         J.File (..),
         J.Utf8 (..),
+        pattern J.Utf8File,
         -- * Some complicated stuff
         -- $complicated
         recast,

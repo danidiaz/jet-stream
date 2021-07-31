@@ -632,30 +632,30 @@ downstream stop step = go
             s' <- step s x
             go xs s'
 
--- General funnels
+-- General sinks
 
-type Funnel a = Jet a -> IO ()
+type Sink a = Jet a -> IO ()
 
-class JetTarget a target where
-    funnel :: target -> Funnel a
+class JetSink a target where
+    sink :: target -> Sink a
 
-instance JetTarget ByteString Handle where
-    funnel handle j = for_ j (B.hPut handle)
+instance JetSink ByteString Handle where
+    sink handle j = for_ j (B.hPut handle)
 
-instance JetTarget a Handle => JetTarget a File where
-    funnel (File path) j = System.IO.withFile path System.IO.WriteMode \handle ->
-        funnel handle j
+instance JetSink a Handle => JetSink a File where
+    sink (File path) j = System.IO.withFile path System.IO.WriteMode \handle ->
+        sink handle j
 
-instance JetTarget ByteString target => JetTarget Text (Utf8 target) where 
-    funnel (Utf8 target) j =
+instance JetSink ByteString target => JetSink Text (Utf8 target) where 
+    sink (Utf8 target) j =
         j & encodeUtf8
-          & funnel target
+          & sink target
 
-instance JetTarget Text (Utf8 target) => JetTarget Line (Utf8 target) where 
-    funnel target j =
+instance JetSink Text (Utf8 target) => JetSink Line (Utf8 target) where 
+    sink target j =
         j & fmap lineToText
           & intersperse (T.singleton '\n') 
-          & funnel target
+          & sink target
 
 -- TODO: remove this.
 -- Perhaps add a "locale" wrapper newtype, alternative to utf8. (but what about input?)
@@ -665,18 +665,20 @@ instance JetTarget Text (Utf8 target) => JetTarget Line (Utf8 target) where
 -- stdStreamToHandle StdOut = System.IO.stdout
 -- stdStreamToHandle StdErr = System.IO.stderr
 -- 
--- instance JetTarget Text StdStream where
---     funnel (stdStreamToHandle -> handle) = traverse_ T.putStr
+-- instance JetSink Text StdStream where
+--     sink (stdStreamToHandle -> handle) = traverse_ T.putStr
 
 -- | Uses the default system locale.
-instance JetTarget Line Handle where
-    funnel handle = traverse_ (T.hPutStrLn handle . lineToText)
+instance JetSink Line Handle where
+    sink handle = traverse_ (T.hPutStrLn handle . lineToText)
 
 -- | Uses the default system locale.
-instance JetTarget Text Handle where
-    funnel handle = traverse_ (T.hPutStr handle)
+instance JetSink Text Handle where
+    sink handle = traverse_ (T.hPutStr handle)
 
 newtype File = File { getFilePath :: FilePath } deriving Show
+
+pattern Utf8File filepath = Utf8 (File filepath)
 
 -- DList helper
 newtype DList a = DList { runDList :: [a] -> [a] }
@@ -948,6 +950,4 @@ data SplitStepResult b = SplitStepResult {
 
 -- TODO: passLines (passUtf8 (throughProcess defaults "shell foo")) ? nah
 -- TODO: throughProcess, linesThroughProcess, utf8LinesThroughProcess <- probably the best bet
--- TODO: Sink instead of Funnel ? possilby
--- TODO: funnel instead of pass ? nah
 
