@@ -817,7 +817,7 @@ defaults = id
 --                        | NahDoNotKillProces
 
 throughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet ByteString -> Jet ByteString
-throughProcess  adaptConf procSpec (Jet upstream) = Jet \stop step initial -> do
+throughProcess  adaptConf procSpec upstream = Jet \stop step initial -> do
     let ProcConf {_bufferStdin} = adaptConf defaultProcConf
     if 
         -- If we know we aren't going to do any work, don't bother starting the
@@ -830,10 +830,18 @@ throughProcess  adaptConf procSpec (Jet upstream) = Jet \stop step initial -> do
                     std_out = CreatePipe,
                     std_err = CreatePipe
                 }
-          input <- newTBMQueueIO @Int 1
+          input <- newTBMQueueIO @ByteString 1
           inputQueueWriterShouldStop <- newIORef False
           -- remember to drain stderr concurrently with stdout...
-          let inputQueueWriter = undefined
+          let inputQueueWriter = do
+                  run 
+                    upstream 
+                    id 
+                    (\_ a -> do
+                        atomically $ writeTBMQueue input a
+                        readIORef inputQueueWriterShouldStop) 
+                    False
+                  atomically $ closeTBMQueue input
           final <- 
               runConcurrently $
               Concurrently do
