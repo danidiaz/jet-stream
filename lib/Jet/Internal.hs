@@ -22,7 +22,8 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
-
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# OPTIONS_GHC -Wno-partial-type-signatures  #-}
 module Jet.Internal where
 
 import Control.Applicative
@@ -811,9 +812,9 @@ data AreWeInsideGroup foldState = OutsideGroup
         
 data RecastState splitterState foldState = RecastState !splitterState !(AreWeInsideGroup foldState) [IO foldState] 
 
-recast :: Splitter a b -> Combiners b c -> Jet a -> Jet c
+recast :: forall a b c . Splitter a b -> Combiners b c -> Jet a -> Jet c
 recast (MealyIO splitterStep splitterAlloc splitterCoda) 
-       (Combiners foldStep foldAllocs foldCoda) 
+       (Combiners foldStep foldAllocs0 foldCoda) 
        (Jet upstream) = Jet \stop step initial -> do
   initialSplitterState <- splitterAlloc
   let -- When to stop? Either downstream says we need to stop,
@@ -821,15 +822,23 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
       -- can use to process the next one.
       stop' (Pair (RecastState  _ OutsideGroup []) _) = True
       stop' (Pair _ s) = stop s  
-      step' (Pair (RecastState splitterState OutsideGroup (alloc : allocators)) s) a = do
+      step' (Pair (RecastState splitterState OutsideGroup foldAllocs) s) a = do
         -- we don't bother cheking if we contiue the previous group! See SplitStepResult invariants.
         (splitterState',SplitStepResult {entireGroups, beginsNextGroup}) <- splitterStep splitterState a 
+        -- splitterState' doesn't change below this
+        Pair foldAllocs' s' <- processEntireGroups foldAllocs s entireGroups -- doens't return foldState becasue we close the groups
+        if 
+            | stop s' -> do
+              pure s'
+            | otherwise -> do
+                (foldState, s'') <- processBeginNextGroup s' beginsNextGroup
+                undefined
         -- case yieldsEntireGroupsAndBeginsNextOne of
         --     Nothing -> do
         --         -- not much to do here... only the splitter state changes
         --         pure (Pair (RecastState splitterState' OutsideGroup (alloc : allocators)) s)
         --     Just 
-        initialFoldState <- alloc
+        -- initialFoldState <- alloc
         -- splitState0 <- alloc
         -- splitState <- mealyBegin 
         undefined
@@ -837,7 +846,31 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
         undefined
       step' (Pair _ s) a = 
         error "impossible state during recast"
-      initial' = Pair (RecastState initialSplitterState OutsideGroup foldAllocs) initial
+      processEntireGroups :: [IO _] -> _ -> [[b]] -> IO (Pair [IO _] _)
+      -- We can't go on if there aren't any more groups
+      processEntireGroups allocs s [] = do
+        pure (Pair allocs s)
+      -- We can't go on if there aren't any more fold initial state allocs
+      processEntireGroups [] s _ = do
+        pure (Pair [] s)
+      processEntireGroups (alloc : allocs) s (bs:bss) = do
+        !foldState0 <- alloc
+        !c <- processSingleGroup foldState0 bs -- a single step downstream
+        !s' <- step s c
+        if 
+            | stop s' -> do
+              pure (Pair allocs s')
+            | otherwise -> do
+              processEntireGroups allocs s' bss 
+      -- a whole fold is processed here
+      processSingleGroup :: _ -> [b] -> IO c
+      processSingleGroup foldState [] = do
+        foldCoda foldState
+      processSingleGroup foldState (b:bs) = do
+        !foldState' <- foldStep foldState b
+        processSingleGroup foldState bs
+      processBeginNextGroup s bs = undefined
+      initial' = Pair (RecastState initialSplitterState OutsideGroup foldAllocs0) initial
   Pair _ final <- upstream stop' step' initial'
   if 
     | stop final  -> do
@@ -890,7 +923,8 @@ shouldClosePreviousGroup :: SplitStepResult b -> Bool
 shouldClosePreviousGroup (SplitStepResult {entireGroups = [] ,beginsNextGroup = []}) = True
 shouldClosePreviousGroup (SplitStepResult {}) = False
 
--- TODO: passLines (passUtf8 (throughProcess defaults "shell foo"))
--- TODO: Sink instead of Funnel ?
--- TODO: funnel instead of pass ?
+-- TODO: passLines (passUtf8 (throughProcess defaults "shell foo")) ? nah
+-- TODO: throughProcess, linesThroughProcess, utf8LinesThroughProcess <- probably the best bet
+-- TODO: Sink instead of Funnel ? possilby
+-- TODO: funnel instead of pass ? nah
 
