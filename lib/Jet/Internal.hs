@@ -829,7 +829,7 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
         Pair foldAllocs' s' <- processEntireGroups foldAllocs s entireGroups -- doens't return foldState becasue we close the groups
         if 
             | stop s' -> do
-              pure (Pair undefined s')
+              pure (Pair (RecastState splitterState' OutsideGroup foldAllocs') s')
             | otherwise -> do
                 case beginsNextGroup of
                     [] -> do
