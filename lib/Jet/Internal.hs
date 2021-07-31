@@ -811,15 +811,21 @@ data RecastState s a b = OutsideGroup [IO s]
 
 recast :: Splitter a b -> Combiners b c -> Jet a -> Jet c
 recast (MealyIO mealyStep mealyBegin mealyCoda) 
-       (Combiners foldStep allocators foldCoda) 
+       (Combiners foldStep allocators0 foldCoda) 
        (Jet upstream) = Jet \stop step initial -> do
   let -- When to stop? Either downstream says we need to stop,
       -- or we are outside a group and there isn't another group consumer we
       -- can use to process the next one.
       stop' (Pair (OutsideGroup []) _) = True
       stop' (Pair _  s) = stop s  
+      step (Pair (OutsideGroup (alloc : allocators)) s) a = do
+        undefined
+      step (Pair (WithinGroup splitState allocators) s) a = do
+        undefined
+      step (Pair _ s) a = 
+        error "impossible state during recast"
       step' _ _ = undefined
-      initial' = Pair (OutsideGroup allocators) initial
+      initial' = Pair (OutsideGroup allocators0) initial
   Pair finalListOfFolds final <- upstream stop' step' initial'
   if 
     | stop final  -> do
