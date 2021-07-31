@@ -823,11 +823,12 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
       stop' (Pair _ s) = stop s  
       step' (Pair (RecastState splitterState OutsideGroup (alloc : allocators)) s) a = do
         -- we don't bother cheking if we contiue the previous group! See SplitStepResult invariants.
-        (splitterState',SplitStepResult {yieldsEntireGroupsAndBeginsNextOne}) <- splitterStep splitterState a 
-        case yieldsEntireGroupsAndBeginsNextOne of
-            Nothing -> do
-                -- not much to do here... only the splitter state changes
-                pure (Pair (RecastState splitterState' OutsideGroup (alloc : allocators)) s)
+        (splitterState',SplitStepResult {entireGroups, beginsNextGroup}) <- splitterStep splitterState a 
+        -- case yieldsEntireGroupsAndBeginsNextOne of
+        --     Nothing -> do
+        --         -- not much to do here... only the splitter state changes
+        --         pure (Pair (RecastState splitterState' OutsideGroup (alloc : allocators)) s)
+        --     Just 
         initialFoldState <- alloc
         -- splitState0 <- alloc
         -- splitState <- mealyBegin 
@@ -879,11 +880,15 @@ data SplitStepResult b = SplitStepResult {
      -- | INVARIANT: we should only continue a previous group if we have already
      -- began a \"next one\" with one or more elements.
      continuesPreviousGroup :: [b],
+     entireGroups :: [[b]],
      -- | INVARIANT: when we are in the final step, we should not yield elements
      -- for the beginning of a "\next one\".
-     yieldsEntireGroupsAndBeginsNextOne :: Maybe ([[b]],[b])
+     beginsNextGroup :: [b]
   }
 
+shouldClosePreviousGroup :: SplitStepResult b -> Bool
+shouldClosePreviousGroup (SplitStepResult {entireGroups = [] ,beginsNextGroup = []}) = True
+shouldClosePreviousGroup (SplitStepResult {}) = False
 
 -- TODO: passLines (passUtf8 (throughProcess defaults "shell foo"))
 -- TODO: Sink instead of Funnel ?
