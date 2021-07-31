@@ -829,10 +829,19 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
         Pair foldAllocs' s' <- processEntireGroups foldAllocs s entireGroups -- doens't return foldState becasue we close the groups
         if 
             | stop s' -> do
-              pure s'
+              undefined
             | otherwise -> do
-                (foldState, s'') <- processBeginNextGroup s' beginsNextGroup
-                undefined
+                case beginsNextGroup of
+                    [] -> do
+                        undefined
+                    (_ : _) -> do
+                        case foldAllocs of
+                            [] -> do
+                                undefined
+                            alloc : allocs -> do
+                                !foldState0 <- alloc
+                                foldState <- processBeginNextGroup foldState0 beginsNextGroup
+                                undefined
         -- case yieldsEntireGroupsAndBeginsNextOne of
         --     Nothing -> do
         --         -- not much to do here... only the splitter state changes
@@ -841,7 +850,6 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
         -- initialFoldState <- alloc
         -- splitState0 <- alloc
         -- splitState <- mealyBegin 
-        undefined
       step' (Pair (RecastState splitterState (InsideGroup foldState) allocators) s) a = do
         undefined
       step' (Pair _ s) a = 
@@ -869,9 +877,15 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
       processSingleGroup foldState (b:bs) = do
         !foldState' <- foldStep foldState b
         processSingleGroup foldState bs
-      processBeginNextGroup s bs = undefined
+      processBeginNextGroup :: _ -> [b] -> IO _
+      processBeginNextGroup foldState [] = do
+        pure foldState
+      processBeginNextGroup foldState (b:bs) = do
+        !foldState' <- foldStep foldState b
+        processBeginNextGroup foldState bs
       initial' = Pair (RecastState initialSplitterState OutsideGroup foldAllocs0) initial
   Pair _ final <- upstream stop' step' initial'
+  -- TODO: complete the finisher!
   if 
     | stop final  -> do
       pure final
