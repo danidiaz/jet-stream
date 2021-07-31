@@ -844,6 +844,7 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
                         pure (Pair (RecastState OutsideGroup foldAllocs) s')
                     | otherwise -> do
                         advanceRecast ssr (RecastState OutsideGroup foldAllocs) s'
+            -- if we are outside of a group, the "continuesPreviousGroup" is ignored.
             (OutsideGroup, _, _) -> do
                 -- doens't return foldState becasue we close the groups
                 Pair foldAllocs' s' <- processEntireGroups foldAllocs s entireGroups 
@@ -907,6 +908,7 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
       pure final
     | otherwise -> do
       splitResult <- splitterCoda splitterState
+      -- We discard the "begins next group"; it doesn't make sense in this final step.
       Pair _ final' <- advanceRecast (splitResult { beginsNextGroup = [] }) recastState final
       pure final'
 
