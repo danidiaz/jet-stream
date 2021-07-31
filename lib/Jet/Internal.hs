@@ -831,7 +831,16 @@ throughProcess  adaptConf procSpec (Jet upstream) = Jet \stop step initial -> do
                     std_err = CreatePipe
                 }
           -- remember to drain stderr concurrently with stdout...
-          withCreateProcess procSpec' undefined
+          withCreateProcess procSpec' \(Just stdin') (Just stdout') (Just stderr') phandle -> do
+            when (not _bufferStdin) (System.IO.hSetBuffering  stdin' System.IO.NoBuffering)
+            final <- 
+                _runConceit $ 
+                _Conceit undefined
+                *> 
+                _Conceit undefined
+                *> 
+                _Conceit undefined
+            pure final
 
 data ProcConf = ProcConf {
         _bufferStdin :: Bool
