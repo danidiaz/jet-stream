@@ -829,19 +829,19 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
         Pair foldAllocs' s' <- processEntireGroups foldAllocs s entireGroups -- doens't return foldState becasue we close the groups
         if 
             | stop s' -> do
-              undefined
+              pure (Pair undefined s')
             | otherwise -> do
                 case beginsNextGroup of
                     [] -> do
-                        undefined
+                        pure (Pair undefined s')
                     (_ : _) -> do
                         case foldAllocs of
                             [] -> do
-                                undefined
+                                pure (Pair undefined s')
                             alloc : allocs -> do
                                 !foldState0 <- alloc
                                 foldState <- processBeginNextGroup foldState0 beginsNextGroup
-                                undefined
+                                pure (Pair undefined s')
         -- case yieldsEntireGroupsAndBeginsNextOne of
         --     Nothing -> do
         --         -- not much to do here... only the splitter state changes
