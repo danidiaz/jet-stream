@@ -824,24 +824,32 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
       stop' (Pair _ s) = stop s  
       step' (Pair (RecastState splitterState OutsideGroup foldAllocs) s) a = do
         -- we don't bother cheking if we contiue the previous group! See SplitStepResult invariants.
-        (splitterState',SplitStepResult {entireGroups, beginsNextGroup}) <- splitterStep splitterState a 
+        (splitterState',ssr@SplitStepResult {entireGroups, beginsNextGroup}) <- splitterStep splitterState a 
         -- splitterState' doesn't change below this
-        Pair foldAllocs' s' <- processEntireGroups foldAllocs s entireGroups -- doens't return foldState becasue we close the groups
+        s' <- if 
+           | shouldClosePreviousGroup ssr -> do
+             undefined
+           | otherwise -> do
+             undefined
+        -- TODO re-check state after this
+        Pair foldAllocs' s'' <- processEntireGroups foldAllocs s' entireGroups -- doens't return foldState becasue we close the groups
+        bail <- pure (Pair (RecastState splitterState' OutsideGroup foldAllocs') s'')
         if 
-            | stop s' -> do
-              pure (Pair (RecastState splitterState' OutsideGroup foldAllocs') s')
+            | stop s'' -> do
+              pure bail
             | otherwise -> do
                 case beginsNextGroup of
                     [] -> do
-                        pure (Pair undefined s')
+                      pure bail
                     (_ : _) -> do
                         case foldAllocs of
                             [] -> do
-                                pure (Pair undefined s')
+                                pure bail
                             alloc : allocs -> do
+                                -- there is a next group, so let's begin it
                                 !foldState0 <- alloc
                                 foldState <- processBeginNextGroup foldState0 beginsNextGroup
-                                pure (Pair undefined s')
+                                pure (Pair (RecastState splitterState' (InsideGroup foldState) allocs) s'')
         -- case yieldsEntireGroupsAndBeginsNextOne of
         --     Nothing -> do
         --         -- not much to do here... only the splitter state changes
@@ -854,6 +862,9 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
         undefined
       step' (Pair _ s) a = 
         error "impossible state during recast"
+      shouldClosePreviousGroup :: SplitStepResult _ -> Bool
+      shouldClosePreviousGroup (SplitStepResult {entireGroups = [] ,beginsNextGroup = []}) = True
+      shouldClosePreviousGroup (SplitStepResult {}) = False
       processEntireGroups :: [IO _] -> _ -> [[b]] -> IO (Pair [IO _] _)
       -- We can't go on if there aren't any more groups
       processEntireGroups allocs s [] = do
@@ -933,9 +944,6 @@ data SplitStepResult b = SplitStepResult {
      beginsNextGroup :: [b]
   }
 
-shouldClosePreviousGroup :: SplitStepResult b -> Bool
-shouldClosePreviousGroup (SplitStepResult {entireGroups = [] ,beginsNextGroup = []}) = True
-shouldClosePreviousGroup (SplitStepResult {}) = False
 
 -- TODO: passLines (passUtf8 (throughProcess defaults "shell foo")) ? nah
 -- TODO: throughProcess, linesThroughProcess, utf8LinesThroughProcess <- probably the best bet
