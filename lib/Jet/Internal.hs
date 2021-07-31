@@ -812,16 +812,23 @@ data AreWeInsideGroup foldState = OutsideGroup
 data RecastState splitterState foldState = RecastState !splitterState !(AreWeInsideGroup foldState) [IO foldState] 
 
 recast :: Splitter a b -> Combiners b c -> Jet a -> Jet c
-recast (MealyIO mealyStep mealyAlloc mealyCoda) 
+recast (MealyIO splitterStep splitterAlloc splitterCoda) 
        (Combiners foldStep foldAllocs foldCoda) 
        (Jet upstream) = Jet \stop step initial -> do
-  initialSplitterState <- mealyAlloc
+  initialSplitterState <- splitterAlloc
   let -- When to stop? Either downstream says we need to stop,
       -- or we are outside a group and there isn't another group consumer we
       -- can use to process the next one.
       stop' (Pair (RecastState  _ OutsideGroup []) _) = True
       stop' (Pair _ s) = stop s  
       step' (Pair (RecastState splitterState OutsideGroup (alloc : allocators)) s) a = do
+        -- we don't bother cheking if we contiue the previous group! See SplitStepResult invariants.
+        (splitterState',SplitStepResult {yieldsEntireGroupsAndBeginsNextOne}) <- splitterStep splitterState a 
+        case yieldsEntireGroupsAndBeginsNextOne of
+            Nothing -> do
+                -- not much to do here... only the splitter state changes
+                pure (Pair (RecastState splitterState' OutsideGroup (alloc : allocators)) s)
+        initialFoldState <- alloc
         -- splitState0 <- alloc
         -- splitState <- mealyBegin 
         undefined
