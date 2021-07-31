@@ -830,22 +830,30 @@ throughProcess  adaptConf procSpec (Jet upstream) = Jet \stop step initial -> do
                     std_out = CreatePipe,
                     std_err = CreatePipe
                 }
+          input <- newTBMQueueIO @Int 1
+          inputQueueWriterShouldStop <- newIORef False
           -- remember to drain stderr concurrently with stdout...
-          withCreateProcess procSpec' \(Just stdin') (Just stdout') (Just stderr') phandle -> do
-            when (not _bufferStdin) (System.IO.hSetBuffering  stdin' System.IO.NoBuffering)
-            final <- 
-                _runConceit $ 
-                -- what about the principle "never interrupt upstream" ?
-                -- perhaps use a closeable channel?
-                _Conceit undefined
-                *> 
-                (_Conceit $ jet @Line stderr' & drain)
-                *> 
-                _Conceit undefined
-            pure final
+          let inputQueueWriter = undefined
+          final <- 
+              runConcurrently $
+              Concurrently do
+                  inputQueueWriter
+              *>
+              Concurrently do
+                  withCreateProcess procSpec' \(Just stdin') (Just stdout') (Just stderr') phandle -> do
+                    when (not _bufferStdin) (System.IO.hSetBuffering  stdin' System.IO.NoBuffering)
+                    _runConceit $ 
+                        -- what about the principle "never interrupt upstream" ?
+                        -- perhaps use a closeable channel?
+                        _Conceit undefined
+                        *> 
+                        (_Conceit $ jet @Line stderr' & drain)
+                        *> 
+                        _Conceit undefined
+          pure final
 
 data ProcConf = ProcConf {
-        _bufferStdin :: Bool,
+        _bufferStdin :: Bool
     }
 
 defaultProcConf :: ProcConf 
