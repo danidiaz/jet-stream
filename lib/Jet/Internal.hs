@@ -822,15 +822,16 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
       -- can use to process the next one.
       stop' (Pair (RecastState  _ OutsideGroup []) _) = True
       stop' (Pair _ s) = stop s  
-      step' (Pair (RecastState splitterState OutsideGroup foldAllocs) s) a = do
+      step' (Pair (RecastState splitterState areWeInsideGroup foldAllocs) s) a = do
         -- we don't bother cheking if we contiue the previous group! See SplitStepResult invariants.
-        (splitterState',ssr@SplitStepResult {entireGroups, beginsNextGroup}) <- splitterStep splitterState a 
+        (splitterState',ssr@SplitStepResult {continuesPreviousGroup,entireGroups, beginsNextGroup}) <- splitterStep splitterState a 
         -- splitterState' doesn't change below this
         s' <- if 
            | shouldClosePreviousGroup ssr -> do
-             undefined
+             c <- processSingleGroup undefined continuesPreviousGroup
+             step s c
            | otherwise -> do
-             undefined
+             pure s
         -- TODO re-check state after this
         Pair foldAllocs' s'' <- processEntireGroups foldAllocs s' entireGroups -- doens't return foldState becasue we close the groups
         bail <- pure (Pair (RecastState splitterState' OutsideGroup foldAllocs') s'')
