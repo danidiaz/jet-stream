@@ -806,27 +806,31 @@ defaults = id
 --
 -- complicated stufff
 
-data RecastState s a b = OutsideGroup [IO s]
-                       | WithinGroup !s [IO s]
+data AreWeInsideGroup foldState = OutsideGroup
+                                | InsideGroup !foldState 
+        
+data RecastState splitterState foldState = RecastState !splitterState !(AreWeInsideGroup foldState) [IO foldState] 
 
 recast :: Splitter a b -> Combiners b c -> Jet a -> Jet c
-recast (MealyIO mealyStep mealyBegin mealyCoda) 
-       (Combiners foldStep allocators0 foldCoda) 
+recast (MealyIO mealyStep mealyAlloc mealyCoda) 
+       (Combiners foldStep foldAllocs foldCoda) 
        (Jet upstream) = Jet \stop step initial -> do
+  initialSplitterState <- mealyAlloc
   let -- When to stop? Either downstream says we need to stop,
       -- or we are outside a group and there isn't another group consumer we
       -- can use to process the next one.
-      stop' (Pair (OutsideGroup []) _) = True
-      stop' (Pair _  s) = stop s  
-      step (Pair (OutsideGroup (alloc : allocators)) s) a = do
+      stop' (Pair (RecastState  _ OutsideGroup []) _) = True
+      stop' (Pair _ s) = stop s  
+      step' (Pair (RecastState splitterState OutsideGroup (alloc : allocators)) s) a = do
+        -- splitState0 <- alloc
+        -- splitState <- mealyBegin 
         undefined
-      step (Pair (WithinGroup splitState allocators) s) a = do
+      step' (Pair (RecastState splitterState (InsideGroup foldState) allocators) s) a = do
         undefined
-      step (Pair _ s) a = 
+      step' (Pair _ s) a = 
         error "impossible state during recast"
-      step' _ _ = undefined
-      initial' = Pair (OutsideGroup allocators0) initial
-  Pair finalListOfFolds final <- upstream stop' step' initial'
+      initial' = Pair (RecastState initialSplitterState OutsideGroup foldAllocs) initial
+  Pair _ final <- upstream stop' step' initial'
   if 
     | stop final  -> do
       pure final
