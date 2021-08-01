@@ -33,7 +33,7 @@ import Control.Exception
 import Data.Foldable qualified
 import Prelude hiding (traverse_, for_, filter, drop, dropWhile, fold, take, takeWhile, unfold, zip, zipWith, filterM, lines, intersperse)
 import Unsafe.Coerce qualified
-import System.IO (Handle, IOMode)
+import System.IO (Handle, IOMode, hClose)
 import System.IO qualified
 import Data.Function ((&))
 import Data.Functor ((<&>))
@@ -842,6 +842,14 @@ throughProcess  adaptConf procSpec upstream = Jet \stop step initial -> do
                         readIORef inputQueueWriterShouldStop) 
                     False
                   atomically $ closeTBMQueue input
+              inputQueueReader handle = do
+                ma <- atomically $ readTBMQueue input
+                case ma of 
+                    Nothing -> do
+                        hClose handle
+                    Just a -> do
+                        B.hPut handle a 
+                        inputQueueReader handle
           final <- 
               runConcurrently $
               Concurrently do
@@ -853,7 +861,7 @@ throughProcess  adaptConf procSpec upstream = Jet \stop step initial -> do
                     _runConceit $ 
                         -- what about the principle "never interrupt upstream" ?
                         -- perhaps use a closeable channel?
-                        _Conceit undefined
+                        _Conceit (inputQueueReader stdin')
                         *> 
                         (_Conceit $ jet @Line stderr' & drain)
                         *> 
