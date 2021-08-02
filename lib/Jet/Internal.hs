@@ -809,9 +809,21 @@ defaults = id
 -- data ShouldKillProcess = YeahKillProcess
 --                        | NahDoNotKillProces
 
+
 throughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet ByteString -> Jet ByteString
-throughProcess  adaptConf procSpec upstream = Jet \stop step initial -> do
-    let ProcConf {_bufferStdin} = adaptConf defaultProcConf
+throughProcess adaptConf = throughProcess_ (adaptConf defaultProcConf)
+
+linesThroughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
+linesThroughProcess adaptConf procSpec = do
+    let textLinesProcConf = (adaptConf defaultProcConf) {
+                _writeToStdIn = T.hPutStrLn,
+                _readFromStdout = T.hGetLine
+            }
+    fmap textToLine . throughProcess_ textLinesProcConf procSpec . fmap lineToText
+
+throughProcess_ :: forall a b . ProcConf_ a b -> CreateProcess -> Jet a -> Jet b
+throughProcess_  procConf procSpec upstream = Jet \stop step initial -> do
+    let ProcConf_ {_bufferStdin, _writeToStdIn, _readFromStdout} = procConf
     if 
         -- If we know we aren't going to do any work, don't bother starting the
         -- whole boondoggle.
@@ -823,7 +835,7 @@ throughProcess  adaptConf procSpec upstream = Jet \stop step initial -> do
                     std_out = CreatePipe,
                     std_err = CreatePipe
                 }
-          input <- newTBMQueueIO @ByteString 1
+          input <- newTBMQueueIO @a 1
           inputQueueWriterShouldStop <- newIORef False
           -- remember to drain stderr concurrently with stdout...
           let inputQueueWriter = do
@@ -849,7 +861,7 @@ throughProcess  adaptConf procSpec upstream = Jet \stop step initial -> do
                               Nothing -> do
                                   hClose stdin'
                               Just a -> do
-                                  B.hPut stdin' a 
+                                  _writeToStdIn stdin' a
                                   stdinWriter
                         stdoutReader s = do
                           if | stop s -> do
@@ -863,8 +875,8 @@ throughProcess  adaptConf procSpec upstream = Jet \stop step initial -> do
                                      waitForProcess phandle
                                      pure (Right s)
                                    | otherwise -> do
-                                     bytes <- B.hGetSome stdout' 8192
-                                     s' <- step s bytes
+                                     b <- _readFromStdout stdout'
+                                     s' <- step s b
                                      stdoutReader s
                     _runConceit $ 
                         _Conceit stdinWriter
@@ -874,13 +886,22 @@ throughProcess  adaptConf procSpec upstream = Jet \stop step initial -> do
                         _Conceit do stdoutReader initial
           pure (either id id finalEither) 
 
-data ProcConf = ProcConf {
-        _bufferStdin :: Bool
+-- data ProcConf = ProcConf {
+--         _bufferStdin :: Bool
+--     }
+
+type ProcConf = ProcConf_ ByteString ByteString
+data ProcConf_ a b = ProcConf_ {
+        _bufferStdin :: Bool,
+        _writeToStdIn :: Handle -> a -> IO (),
+        _readFromStdout :: Handle -> IO b
     }
 
 defaultProcConf :: ProcConf 
-defaultProcConf = ProcConf {
-        _bufferStdin = False
+defaultProcConf = ProcConf_ {
+        _bufferStdin = False,
+        _writeToStdIn = B.hPut,
+        _readFromStdout = flip B.hGetSome 8192
     }
 
 bufferStdin :: Bool -> ProcConf -> ProcConf

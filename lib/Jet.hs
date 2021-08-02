@@ -81,6 +81,7 @@ module Jet (
         defaults,
         -- * Process invocation
         throughProcess,
+        linesThroughProcess,
         utf8LinesThroughProcess,
         ProcConf,
         bufferStdin,
