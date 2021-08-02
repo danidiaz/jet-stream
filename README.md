@@ -42,6 +42,10 @@ move like a snail compared to
 
 ## Some ghci examples
 
+Invoking an external process:
+
+    ghci> mempty & throughProcess defaults (shell "echo foo") & sink stdout
+
 A concurrent pipeline:
 
     ghci> each @Int [1,2,3] & traverseConcurrently id (\a -> threadDelay 2e6 *> return (2^a)) <&> show <&> T.pack & funnel stdout

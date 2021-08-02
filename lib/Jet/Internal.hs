@@ -31,7 +31,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Exception
 import Data.Foldable qualified
-import Prelude hiding (traverse_, for_, filter, drop, dropWhile, fold, take, takeWhile, unfold, zip, zipWith, filterM, lines, intersperse)
+import Prelude hiding (traverse_, for_, filter, drop, dropWhile, fold, take, takeWhile, unfold, zip, zipWith, filterM, lines, intersperse, unlines)
 import Unsafe.Coerce qualified
 import System.IO (Handle, IOMode, hClose)
 import System.IO qualified
@@ -621,6 +621,11 @@ lines (Jet f) = Jet \stop step initial -> do
         | otherwise ->
           step final lineUnderConstruction
         
+unlines :: Jet Line -> Jet Text
+unlines j =
+    j & fmap lineToText
+      & intersperse (T.singleton '\n') 
+
 downstream :: (s -> Bool) -> (s -> x -> IO s) -> [x] -> s -> IO s
 downstream stop step = go
   where
@@ -654,20 +659,8 @@ instance JetSink ByteString target => JetSink Text (Utf8 target) where
 
 instance JetSink Text (Utf8 target) => JetSink Line (Utf8 target) where 
     sink target j =
-        j & fmap lineToText
-          & intersperse (T.singleton '\n') 
+        j & unlines
           & sink target
-
--- TODO: remove this.
--- Perhaps add a "locale" wrapper newtype, alternative to utf8. (but what about input?)
--- data StdStream = StdOut | StdErr deriving Show
--- 
--- stdStreamToHandle :: StdStream -> Handle
--- stdStreamToHandle StdOut = System.IO.stdout
--- stdStreamToHandle StdErr = System.IO.stderr
--- 
--- instance JetSink Text StdStream where
---     sink (stdStreamToHandle -> handle) = traverse_ T.putStr
 
 -- | Uses the default system locale.
 instance JetSink Line Handle where
@@ -842,31 +835,44 @@ throughProcess  adaptConf procSpec upstream = Jet \stop step initial -> do
                         readIORef inputQueueWriterShouldStop) 
                     False
                   atomically $ closeTBMQueue input
-              inputQueueReader handle = do
-                ma <- atomically $ readTBMQueue input
-                case ma of 
-                    Nothing -> do
-                        hClose handle
-                    Just a -> do
-                        B.hPut handle a 
-                        inputQueueReader handle
-          final <- 
+          finalEither <- 
               runConcurrently $
               Concurrently do
                   inputQueueWriter
               *>
               Concurrently do
                   withCreateProcess procSpec' \(Just stdin') (Just stdout') (Just stderr') phandle -> do
-                    when (not _bufferStdin) (System.IO.hSetBuffering  stdin' System.IO.NoBuffering)
+                    when (not _bufferStdin) (System.IO.hSetBuffering stdin' System.IO.NoBuffering)
+                    let stdinWriter = do
+                          ma <- atomically $ readTBMQueue input
+                          case ma of 
+                              Nothing -> do
+                                  hClose stdin'
+                              Just a -> do
+                                  B.hPut stdin' a 
+                                  stdinWriter
+                        stdoutReader s = do
+                          if | stop s -> do
+                               writeIORef inputQueueWriterShouldStop True
+                               pure (Left s)
+                             | otherwise -> do
+                               eof <- System.IO.hIsEOF stdout'
+                               if
+                                   | eof -> do 
+                                     writeIORef inputQueueWriterShouldStop True
+                                     waitForProcess phandle
+                                     pure (Right s)
+                                   | otherwise -> do
+                                     bytes <- B.hGetSome stdout' 8192
+                                     s' <- step s bytes
+                                     stdoutReader s
                     _runConceit $ 
-                        -- what about the principle "never interrupt upstream" ?
-                        -- perhaps use a closeable channel?
-                        _Conceit (inputQueueReader stdin')
+                        _Conceit stdinWriter
                         *> 
-                        (_Conceit $ jet @Line stderr' & drain)
+                        _Conceit do jet @Line stderr' & drain
                         *> 
-                        _Conceit undefined
-          pure final
+                        _Conceit do stdoutReader initial
+          pure (either id id finalEither) 
 
 data ProcConf = ProcConf {
         _bufferStdin :: Bool
@@ -879,6 +885,10 @@ defaultProcConf = ProcConf {
 
 bufferStdin :: Bool -> ProcConf -> ProcConf
 bufferStdin doBuffering procConf = procConf { _bufferStdin = doBuffering }
+
+utf8LinesThroughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
+utf8LinesThroughProcess adaptConf procSpec = do
+    lines . decodeUtf8 . throughProcess adaptConf procSpec . encodeUtf8 . unlines
 
 --
 --

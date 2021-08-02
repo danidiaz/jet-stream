@@ -65,6 +65,7 @@ module Jet (
         J.decodeUtf8,
         J.encodeUtf8,
         J.lines,
+        J.unlines,
         J.Line (Line),
         J.lineToText,
         J.withLineText,
@@ -80,6 +81,7 @@ module Jet (
         defaults,
         -- * Process invocation
         throughProcess,
+        utf8LinesThroughProcess,
         ProcConf,
         bufferStdin,
         -- * Conversion helpers
