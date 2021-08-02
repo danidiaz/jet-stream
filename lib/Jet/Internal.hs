@@ -635,7 +635,7 @@ downstream stop step = go
         | stop s =
           pure s
         | otherwise = do
-            s' <- step s x
+            !s' <- step s x
             go xs s'
 
 -- General sinks
@@ -879,7 +879,7 @@ throughProcess_  procConf procSpec upstream = Jet \stop step initial -> do
                                      pure (Right s)
                                    | otherwise -> do
                                      b <- _readFromStdout stdout'
-                                     s' <- step s b
+                                     !s' <- step s b
                                      stdoutReader s
                     _runConceit $ 
                         _Conceit stdinWriter
