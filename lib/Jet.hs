@@ -10,6 +10,7 @@ module Jet (
         J.for,
         J.for_,
         J.drain,
+        defaults,
         -- J.flatMap,
         -- * Building Jets
         J.each,
@@ -78,13 +79,14 @@ module Jet (
         inputQueueSize,
         numberOfWorkers,
         outputQueueSize,
-        defaults,
         -- * Process invocation
         throughProcess,
         linesThroughProcess,
         utf8LinesThroughProcess,
         ProcConf,
         bufferStdin,
+        readFromStderr,
+        handleExitCode,
         -- * Conversion helpers
         J.JetSource (..),
         J.JetSink (..),

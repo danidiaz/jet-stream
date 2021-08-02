@@ -23,6 +23,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# OPTIONS_GHC -Wno-partial-type-signatures  #-}
 module Jet.Internal where
 
@@ -31,7 +32,8 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Exception
 import Data.Foldable qualified
-import Prelude hiding (traverse_, for_, filter, drop, dropWhile, fold, take, takeWhile, unfold, zip, zipWith, filterM, lines, intersperse, unlines)
+import Prelude hiding (traverse_, for_, filter, drop, dropWhile, fold, take,
+                       takeWhile, unfold, zip, zipWith, filterM, lines, intersperse, unlines)
 import Unsafe.Coerce qualified
 import System.IO (Handle, IOMode, hClose)
 import System.IO qualified
@@ -55,6 +57,7 @@ import Control.Concurrent.Conceit
 import Control.Concurrent.STM.TBMQueue
 import Control.Concurrent.Async
 import System.Process
+import System.Exit
 
 newtype Jet a = Jet {
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
@@ -695,12 +698,19 @@ singleton a = DList $ (a :)
 --
 -- concurrency
 
--- TODO: 
--- Perhaps the writer shoult wait for the reader to start?
+-- | Process the values yielded by the upstream 'Jet' in a concurrent way,
+-- and return the results in the form of another 'Jet' as they are produced.
+--
+-- What happens if we 'limit' the resulting 'Jet' and we reach that limit, or
+-- if we otherwise stop consuming the 'Jet' before it gets exhausted? In those
+-- cases, all pending @IO b@ tasks are cancelled.
+--
+-- __NB__: this function might scramble the order of the returned values. Right
+-- now there isn't a function for unscrambling them.
+traverseConcurrently :: (PoolConf -> PoolConf) -> (a -> IO b) -> Jet a -> Jet b
 -- TODO:
 -- It would be nice to have 0-lengh channels for which one side blocks until
 -- the other side takes the job.
-traverseConcurrently :: (PoolConf -> PoolConf) -> (a -> IO b) -> Jet a -> Jet b
 traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
     if 
         -- If we know we aren't going to do any work, don't bother starting the
@@ -779,6 +789,7 @@ traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
                       Left final -> do
                           pure final
 
+-- | Configuration record for the worker pool.
 data PoolConf = PoolConf {
         _inputQueueSize :: Int,
         _numberOfWorkers :: Int,
@@ -791,31 +802,39 @@ defaultPoolConf = PoolConf {
         _outputQueueSize = 1
  }
 
+-- | Size of the waiting queue into the worker pool. The default is @1@.
 inputQueueSize :: Int -> PoolConf -> PoolConf
 inputQueueSize size poolConf = poolConf { _inputQueueSize = size }
 
+-- | The size of the worker pool. The default is @1@.
 numberOfWorkers :: Int -> PoolConf -> PoolConf
 numberOfWorkers number poolConf = poolConf { _numberOfWorkers = number }
 
+-- | Size of the queue holding results out of the working pool before they
+-- are yielded downstream. The default is @1@.
 outputQueueSize :: Int -> PoolConf -> PoolConf 
 outputQueueSize size poolConf = poolConf { _outputQueueSize = size }
 
+-- | An alias for "id". Useful with functions like 'traverseConcurrently' and
+-- 'throughProcess', for which it means \"use the default configuration\".
 defaults :: a -> a
 defaults = id
 
 -- 
 -- process invocation
 
--- data ShouldKillProcess = YeahKillProcess
---                        | NahDoNotKillProces
-
--- TODO: throw exception on -1
--- TODO: allow configuring the behaviour on exit code.
--- TODO: allow configuring stderr handling (like, throwing exception? - I don't have a proper FoldIO type :()
-
+-- | Feeds the upstream 'Jet' to an external process' @stdin@ and returns the
+-- process' @stdout@ as another @Jet@. The feeding and reading of the standard
+-- streams is done concurrently in order to avoid deadlocks.
+--
+-- What happens if we 'limit' the resulting 'Jet' and we reach that limit, or
+-- if we otherwise stop consuming the 'Jet' before it gets exhausted? In those
+-- cases, the external process is promptly terminated.
 throughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet ByteString -> Jet ByteString
 throughProcess adaptConf = throughProcess_ (adaptConf defaultProcConf)
 
+-- | Like 'throughProcess', but feeding and reading 'Line's using the default
+-- system encoding.
 linesThroughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
 linesThroughProcess adaptConf procSpec = do
     let textLinesProcConf = (adaptConf defaultProcConf) {
@@ -824,9 +843,14 @@ linesThroughProcess adaptConf procSpec = do
             }
     fmap textToLine . throughProcess_ textLinesProcConf procSpec . fmap lineToText
 
+-- | Like 'throughProcess', but feeding and reading 'Line's encoded in UTF8.
+utf8LinesThroughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
+utf8LinesThroughProcess adaptConf procSpec = do
+    lines . decodeUtf8 . throughProcess adaptConf procSpec . encodeUtf8 . unlines
+
 throughProcess_ :: forall a b . ProcConf_ a b -> CreateProcess -> Jet a -> Jet b
 throughProcess_  procConf procSpec upstream = Jet \stop step initial -> do
-    let ProcConf_ {_bufferStdin, _writeToStdIn, _readFromStdout} = procConf
+    let ProcConf_ {_bufferStdin, _writeToStdIn, _readFromStdout,_readFromStderr, _handleExitCode} = procConf
     if 
         -- If we know we aren't going to do any work, don't bother starting the
         -- whole boondoggle.
@@ -866,6 +890,8 @@ throughProcess_  procConf procSpec upstream = Jet \stop step initial -> do
                               Just a -> do
                                   _writeToStdIn stdin' a
                                   stdinWriter
+                        stderrReader = do
+                            untilEOF System.IO.hIsEOF _readFromStdout stderr' & drain
                         stdoutReader s = do
                           if | stop s -> do
                                writeIORef inputQueueWriterShouldStop True
@@ -875,44 +901,66 @@ throughProcess_  procConf procSpec upstream = Jet \stop step initial -> do
                                if
                                    | eof -> do 
                                      writeIORef inputQueueWriterShouldStop True
-                                     waitForProcess phandle
+                                     exitCode <- waitForProcess phandle
+                                     _handleExitCode exitCode
                                      pure (Right s)
                                    | otherwise -> do
                                      b <- _readFromStdout stdout'
                                      !s' <- step s b
                                      stdoutReader s
                     _runConceit $ 
-                        _Conceit stdinWriter
+                        _Conceit do stdinWriter
                         *> 
-                        _Conceit do jet @Line stderr' & drain
+                        _Conceit do stderrReader
                         *> 
                         _Conceit do stdoutReader initial
           pure (either id id finalEither) 
 
--- data ProcConf = ProcConf {
---         _bufferStdin :: Bool
---     }
-
+-- | Configuration record with some extra options in addition to those in "CreateProcess".
 type ProcConf = ProcConf_ ByteString ByteString
 data ProcConf_ a b = ProcConf_ {
         _bufferStdin :: Bool,
         _writeToStdIn :: Handle -> a -> IO (),
-        _readFromStdout :: Handle -> IO b
+        _readFromStdout :: Handle -> IO b,
+        _readFromStderr :: Handle -> IO (),
+        _handleExitCode :: ExitCode -> IO ()
     }
 
 defaultProcConf :: ProcConf 
 defaultProcConf = ProcConf_ {
         _bufferStdin = False,
         _writeToStdIn = B.hPut,
-        _readFromStdout = flip B.hGetSome 8192
+        _readFromStdout = flip B.hGetSome 8192,
+        _readFromStderr = void . T.hGetLine ,
+        _handleExitCode = \exitCode -> case exitCode of
+            ExitFailure _ -> throwIO exitCode 
+            ExitSuccess -> pure ()
     }
 
+-- | Should we buffer the process' @stdin@? Usually should be 'True' for
+-- interactive scenarios.
+--
+-- By default, 'False'.
 bufferStdin :: Bool -> ProcConf -> ProcConf
 bufferStdin doBuffering procConf = procConf { _bufferStdin = doBuffering }
 
-utf8LinesThroughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
-utf8LinesThroughProcess adaptConf procSpec = do
-    lines . decodeUtf8 . throughProcess adaptConf procSpec . encodeUtf8 . unlines
+-- | Sets the function that reads a single line of output from the process
+-- @stderr@.  It's called repeatedly until @stderr@ is exhausted. The reads are
+-- done concurrently with the reads from @stdout@.
+--
+-- By default, lines of text are read using the system's default encoding.
+--
+-- This is a good place to throw an exception if we don't like what comes out
+-- of @stderr@.
+readFromStderr :: (Handle -> IO ()) -> ProcConf -> ProcConf
+readFromStderr readFunc procConf = procConf { _readFromStderr = readFunc } 
+
+-- | Sets the function that handles the final `ExitCode` of the process.
+--
+-- The default behavior is to throw the `ExitCode` as an exception if it's not
+-- a success.
+handleExitCode :: (ExitCode -> IO ()) -> ProcConf -> ProcConf
+handleExitCode handler procConf = procConf { _handleExitCode = handler } 
 
 --
 --
@@ -923,6 +971,15 @@ data AreWeInsideGroup foldState = OutsideGroup
         
 data RecastState foldState = RecastState !(AreWeInsideGroup foldState) [IO foldState] 
 
+-- | This is a complex, unwieldly, yet versatile function. It can be used to
+-- define grouping operations, but also for decoding and other purposes.
+--
+-- Groups are delimited in the input 'Jet' using the 'Splitter', and the
+-- contents of those groups are then combined using 'Combiners'. The result of
+-- each combiner is yielded by the return 'Jet'.
+--
+-- If the list of combiners is finite and becomes exhausted, we stop splitting
+-- and the return 'Jet' stops.
 recast :: forall a b c . Splitter a b -> Combiners b c -> Jet a -> Jet c
 recast (MealyIO splitterStep splitterAlloc splitterCoda) 
        (Combiners foldStep foldAllocs0 foldCoda) 
@@ -1029,30 +1086,55 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
 data Combiners a b where 
     Combiners :: (s -> a -> IO s) -> [IO s] -> (s -> IO b) -> Combiners a b
 
+deriving stock instance Functor (Combiners a)
+
+-- | Construct a 'Combiners' value out of a step function, a (possibly
+-- infinite) list of starting actions, and a coda.
 combiners :: (s -> a -> IO s) -> [IO s] -> (s -> IO b) -> Combiners a b
 combiners = combiners
 
+-- | Delimits groups in the values yielded by a 'Jet', and can also transform
+-- those values.
 type Splitter a b = MealyIO a (SplitStepResult b)
 
--- | A [Mealy machine](https://en.wikipedia.org/wiki/Mealy_machine).  
+-- | A [Mealy machine](https://en.wikipedia.org/wiki/Mealy_machine) with an
+-- existentially hidden state.  
 --
 -- Very much like a @FoldM IO@  from the
 -- [foldl](https://hackage.haskell.org/package/foldl-1.4.12/docs/Control-Foldl.html#t:FoldM)
 -- library, but it emits an output at each step, not only at the end.
 data MealyIO a b where
-    MealyIO :: (s -> a -> IO (s,b)) -> IO s -> (s -> IO b) ->  MealyIO a b
+    MealyIO :: (s -> a -> IO (s,b)) -- ^ The step function which threads the state.
+            -> IO s -- ^ An action that produces the initial state.
+            -> (s -> IO b) -- ^ the final output, produced from the final state.
+            ->  MealyIO a b
 
+deriving stock instance Functor (MealyIO a)
+
+-- | For each value coming from upstream, what has the 'Splitter' learned?
+--
+-- * Perhaps we should continue some group we have already started in a previous step.
+--
+-- * Perhaps we have found entire groups that we should emit in one go, groups we know are already complete.
+--
+-- * Perhaps we should start a new group that will continue in the next steps. 
 data SplitStepResult b = SplitStepResult {
-     -- | INVARIANT: we should only continue a previous group if we have already
-     -- began a \"next one\" with one or more elements.
+     -- | The continued group will be \"closed"\ if in the current step we emit
+     -- an entire group or we begin a new group.
+     --
+     -- __INVARIANT__: we should only continue a group if we have already
+     -- opened a \"next one\" with one or more elements in an earlier step.
      continuesPreviousGroup :: [b],
+     -- | It's ok if the groups we find are empty.
      entireGroups :: [[b]],
-     -- | INVARIANT: when we are in the final step, we should not yield elements
+     -- | __INVARIANT__: when we are in the final step, we should not yield elements
      -- for the beginning of a "\next one\".
      beginsNextGroup :: [b]
   }
+  deriving Functor
 
 
--- TODO: passLines (passUtf8 (throughProcess defaults "shell foo")) ? nah
--- TODO: throughProcess, linesThroughProcess, utf8LinesThroughProcess <- probably the best bet
+-- TODO: bring NewlineException from "turtle". Leave it very clear in the docs
+-- which functions are partial!
+--
 
