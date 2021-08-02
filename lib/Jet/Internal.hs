@@ -809,6 +809,9 @@ defaults = id
 -- data ShouldKillProcess = YeahKillProcess
 --                        | NahDoNotKillProces
 
+-- TODO: throw exception on -1
+-- TODO: allow configuring the behaviour on exit code.
+-- TODO: allow configuring stderr handling (like, throwing exception? - I don't have a proper FoldIO type :()
 
 throughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet ByteString -> Jet ByteString
 throughProcess adaptConf = throughProcess_ (adaptConf defaultProcConf)
