@@ -525,8 +525,8 @@ accumByteLengths = mapAccum (\acc bytes -> let acc' = acc + B.length bytes in (a
 data AmIContinuing = Continuing
                    | NotContinuing
 
-splittableBlocksOverByteSizedBuckets :: [Int] -> Splitter ByteString ByteString
-splittableBlocksOverByteSizedBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) mempty
+splittableBlocksIntoByteSizedBuckets :: [Int] -> Splitter ByteString ByteString
+splittableBlocksIntoByteSizedBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) mempty
     where
     step splitterState b = do
         let (Pair continuing' buckets', continueResult, b') = continue splitterState b
