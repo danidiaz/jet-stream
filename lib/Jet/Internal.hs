@@ -525,48 +525,40 @@ accumByteLengths = mapAccum (\acc bytes -> let acc' = acc + B.length bytes in (a
 data AmIContinuing = Continuing
                    | NotContinuing
 
-bucketSplitter :: [Int] -> Splitter ByteString ByteString
-bucketSplitter buckets = MealyIO step (pure initial) coda
+splittableBlocksOverByteSizedBuckets :: [Int] -> Splitter ByteString ByteString
+splittableBlocksOverByteSizedBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) mempty
     where
-    initial = Pair NotContinuing buckets
     step splitterState b = do
-        let (Pair continuing' buckets', continueResult, b') = whatContinues splitterState b
+        let (Pair continuing' buckets', continueResult, b') = continue splitterState b
         pure case continuing' of
             Continuing -> 
                 ( Pair Continuing buckets' , continueResult )
             NotContinuing ->
-                let (entires, mnew, buckets'') = entireGroups mempty b' buckets''
-                    continuing'' = case mnew of
-                        Nothing -> NotContinuing
-                        Just _ -> Continuing
-                 in ( Pair continuing'' buckets''
-                    , continueResult { 
-                            entireGroups = fmap Data.List.singleton entires, 
-                            beginsNextGroup = maybeToList mnew
-                    })
-    whatContinues :: (Pair AmIContinuing [Int]) -> ByteString -> (Pair AmIContinuing [Int], SplitStepResult ByteString, ByteString)
-    whatContinues (Pair NotContinuing buckets) b = 
+                mappend continueResult <$> entires mempty b' buckets' 
+    continue :: (Pair AmIContinuing [Int]) -> ByteString -> (Pair AmIContinuing [Int], SplitStepResult ByteString, ByteString)
+    continue (Pair NotContinuing buckets) b = 
         (Pair NotContinuing buckets, mempty, b)
-    whatContinues (Pair Continuing []) b = 
+    continue (Pair Continuing []) b = 
         (Pair Continuing buckets, continueWith b, B.empty)
-    whatContinues (Pair Continuing (bucket : buckets)) b = 
+    continue (Pair Continuing (bucket : buckets)) b = 
         let blen = B.length b
          in case compare blen bucket of
                 LT -> (Pair Continuing (bucket - blen : buckets), continueWith b, B.empty)
                 EQ -> (Pair NotContinuing buckets, continueWith b, B.empty)
                 GT -> let (left,right) = B.splitAt bucket b
                        in (Pair NotContinuing buckets, continueWith left, right)  
-    continueWith b = mempty { continuesPreviousGroup = [b] }
-    entireGroups :: DList ByteString -> ByteString -> [Int] -> ([ByteString], Maybe ByteString, [Int])
-    entireGroups acc b []                 = (closeDList $ acc <> singleton b, Nothing, [])
-    entireGroups acc b (bucket : buckets) = 
+    entires :: DList ByteString -> ByteString -> [Int] -> (Pair AmIContinuing [Int], SplitStepResult ByteString)
+    entires acc b []                 = (Pair Continuing [], entireWith acc <> nextWith b)
+    entires acc b (bucket : buckets) = 
         let blen = B.length b
          in case compare blen bucket of
-                LT -> (closeDList acc , Just b, bucket - blen : buckets)
-                EQ -> (closeDList $ acc <> singleton b, Nothing, buckets)
+                LT -> (Pair Continuing (bucket - blen : buckets), entireWith acc <> nextWith b)
+                EQ -> (Pair NotContinuing buckets, entireWith (acc <> singleton b))
                 GT -> let (left,right) = B.splitAt bucket b
-                       in entireGroups (acc <> singleton left) right buckets -- non-terminal
-    coda = (\_ -> pure $ SplitStepResult [] [] [])
+                       in entires (acc <> singleton left) right buckets -- non-terminal
+    continueWith b = mempty { continuesPreviousGroup = [b] }
+    entireWith bdf = mempty { entireGroups = fmap pure (closeDList bdf) }
+    nextWith b = mempty { beginsNextGroup = [b] }
 
 -- | Uses the default system locale.
 instance JetSource Line Handle where
