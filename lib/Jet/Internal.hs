@@ -525,13 +525,12 @@ accumByteLengths = mapAccum (\acc bytes -> let acc' = acc + B.length bytes in (a
 data AmIContinuing = Continuing
                    | NotContinuing
 
--- TODO: this still isn't quite right
 bucketSplitter :: [Int] -> Splitter ByteString ByteString
 bucketSplitter buckets = MealyIO step (pure initial) coda
     where
     initial = Pair NotContinuing buckets
     step splitterState b = do
-        let (Pair continuing' buckets', b', continueResult) = whatContinues splitterState b
+        let (Pair continuing' buckets', continueResult, b') = whatContinues splitterState b
         pure case continuing' of
             Continuing -> 
                 ( Pair Continuing buckets' , continueResult )
@@ -545,18 +544,18 @@ bucketSplitter buckets = MealyIO step (pure initial) coda
                             entireGroups = fmap Data.List.singleton entires, 
                             beginsNextGroup = maybeToList mnew
                     })
-    whatContinues :: (Pair AmIContinuing [Int]) -> ByteString -> (Pair AmIContinuing [Int], ByteString, SplitStepResult ByteString)
+    whatContinues :: (Pair AmIContinuing [Int]) -> ByteString -> (Pair AmIContinuing [Int], SplitStepResult ByteString, ByteString)
     whatContinues (Pair NotContinuing buckets) b = 
-        (Pair NotContinuing buckets, b, mempty)
+        (Pair NotContinuing buckets, mempty, b)
     whatContinues (Pair Continuing []) b = 
-        (Pair Continuing buckets, B.empty, continueWith b)
+        (Pair Continuing buckets, continueWith b, B.empty)
     whatContinues (Pair Continuing (bucket : buckets)) b = 
         let blen = B.length b
          in case compare blen bucket of
-                LT -> (Pair Continuing (bucket - blen : buckets), B.empty, continueWith b)
-                EQ -> (Pair NotContinuing buckets, B.empty, continueWith b)
+                LT -> (Pair Continuing (bucket - blen : buckets), continueWith b, B.empty)
+                EQ -> (Pair NotContinuing buckets, continueWith b, B.empty)
                 GT -> let (left,right) = B.splitAt bucket b
-                       in (Pair NotContinuing buckets, right, continueWith left)  
+                       in (Pair NotContinuing buckets, continueWith left, right)  
     continueWith b = mempty { continuesPreviousGroup = [b] }
     entireGroups :: DList ByteString -> ByteString -> [Int] -> ([ByteString], Maybe ByteString, [Int])
     entireGroups acc b []                 = (closeDList $ acc <> singleton b, Nothing, [])
