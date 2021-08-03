@@ -60,6 +60,7 @@ import System.Process
 import System.Exit
 import Data.String (IsString(..))
 import Data.Typeable
+import Data.Traversable qualified
 
 newtype Jet a = Jet {
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
@@ -515,6 +516,28 @@ instance JetSource a Handle => JetSource a File where
     jet (File path) = do
         handle <- withFile path 
         jet handle
+
+accumByteLengths :: Jet ByteString -> Jet (Int,ByteString)
+accumByteLengths = mapAccum (\acc bytes -> let acc' = acc + B.length bytes in (acc',(acc',bytes))) (0 :: Int)
+
+data AmIContinuing = Continuing
+                   | NotContinuing
+
+bucketSplitter :: [Int] -> Splitter ByteString ByteString
+bucketSplitter buckets = MealyIO step (pure initial) coda
+    where
+    -- monotonic = snd $ Data.Traversable.mapAccumL (\acc l -> let acc' = acc + l in (acc', acc')) 0 bucketlist
+    initial = Pair NotContinuing buckets
+    step (Pair NotContinuing []) bs = pure (Pair Continuing [], SplitStepResult [] [] [bs])
+    step (Pair Continuing []) bs = pure (Pair Continuing [], SplitStepResult [bs] [] [])
+    step (Pair continuing buckets) bs =
+        pure $ go continuing bs buckets mempty mempty mempty 
+    go :: AmIContinuing -> ByteString -> [Int] -> DList ByteString -> DList [ByteString] -> DList ByteString -> (Triple Int AmIContinuing [Int], SplitStepResult ByteString)
+    go continuing bs buckets accPrevious accEntire accNew = undefined
+
+    coda = (\_ -> pure $ SplitStepResult [] [] [])
+--    step (Triple acc False (x:xs)) bs = pure (Triple (acc + B.length bs) True [], SplitStepResult [] [] [bs])
+--    step (Triple acc True (x:xs)) bs = pure (Triple (acc + B.length bs) True [], SplitStepResult [bs] [] [])
 
 -- | Uses the default system locale.
 instance JetSource Line Handle where
@@ -1093,9 +1116,12 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
       Pair _ final' <- advanceRecast (splitResult { beginsNextGroup = [] }) recastState final
       pure final'
 
--- | Very much like a @FoldM IO@  from the
+-- | A 'Combiners' value knows how to process a sequence of groups, while
+-- keeping a (existencially hidden) state for each group.
+--
+-- Very much like a @FoldM IO@  from the
 -- [foldl](https://hackage.haskell.org/package/foldl-1.4.12/docs/Control-Foldl.html#t:FoldM)
--- library, but \"restartable\" with a list of starting conditions.
+-- library, but \"restartable\" with a list of starting states.
 --
 -- For converting one into the other, this function should do the trick:
 --
@@ -1105,19 +1131,46 @@ data Combiners a b where
 
 deriving stock instance Functor (Combiners a)
 
--- | Construct a 'Combiners' value out of a step function, a (possibly
--- infinite) list of starting actions, and a coda.
-combiners :: (s -> a -> IO s) -> [IO s] -> (s -> IO b) -> Combiners a b
+-- | Constructor for 'Combiners' values.
+combiners 
+    :: (s -> a -> IO s) -- ^ Step function that threads the state.
+    -> [IO s] -- ^ Actions that produce the initial states for processing each group.
+    -> (s -> IO b) -- ^ Coda invoked when a group closes.
+    -> Combiners a b
 combiners = combiners
 
-allocatingCombiners 
-    :: (s -> a -> IO s) -- ^ Step function that threads the state.
-    -> [IO s] -- ^ Allocators actions for the initial states.
-    -> (s -> IO b) -- ^ Coda.
-    -> (s -> IO ()) -- ^ Finalizer to run after each coda, and also in the case of exception.
-    -> (Combiners a b %1 -> IO r) -- ^ Linear continuation to prevent double-use of the combiner.
-    %1 -> IO r 
-allocatingCombiners step allocators coda finalizer = undefined
+withCombiners 
+    :: forall h s a b r .
+       (s -> a -> IO s) -- ^ Step function that threads the state.
+    -> [(IO h, h -> IO s)] -- ^ Allocators actions that produce resource references and the initial states for processing each group.
+    -> (s -> IO b) -- ^ Coda invoked when a group closes.
+    -> (h -> IO ()) -- ^ Finalizer to run after each coda, and also in the case of an exception. 
+    -> (Combiners a b %1 -> IO r) -- ^ Linear continuation to prevent double-use of the combiners.
+    -> IO r 
+withCombiners step allocators coda finalize continuation = do
+    resourceRef <- newEmptyMVar @h
+    let  
+        tryFinalize = do
+            tryTakeMVar resourceRef >>= \case
+                Nothing -> pure ()
+                Just resource -> finalize resource
+        adaptAllocator :: (IO h, h -> IO s) -> IO s
+        adaptAllocator (allocate, makeInitialState) = do
+            h <- mask_ do
+                h <- allocate
+                putMVar resourceRef h
+                pure h
+            makeInitialState h 
+        coda' :: s -> IO b
+        coda' s = do
+            b <- coda s
+            -- this always succeeds, we store the resource at the beginning!
+            mask_ tryFinalize
+            pure b
+    r <- (continuation (combiners step (adaptAllocator <$> allocators) coda'))
+         `Control.Exception.finally`
+         tryFinalize
+    pure r
 
 -- | Delimits groups in the values yielded by a 'Jet', and can also transform
 -- those values.
@@ -1132,8 +1185,8 @@ type Splitter a b = MealyIO a (SplitStepResult b)
 data MealyIO a b where
     MealyIO :: (s -> a -> IO (s,b)) -- ^ The step function which threads the state.
             -> IO s -- ^ An action that produces the initial state.
-            -> (s -> IO b) -- ^ the final output, produced from the final state.
-            ->  MealyIO a b
+            -> (s -> IO b) -- ^ The final output, produced from the final state.
+            -> MealyIO a b
 
 deriving stock instance Functor (MealyIO a)
 

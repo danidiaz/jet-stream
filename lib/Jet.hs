@@ -104,7 +104,7 @@ module Jet (
         SplitStepResult(..),
         Combiners,
         combiners,
-        allocatingCombiners,
+        withCombiners,
         -- * Re-exports
         -- $pipelines
         (&),
