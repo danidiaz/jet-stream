@@ -61,6 +61,8 @@ import System.Exit
 import Data.String (IsString(..))
 import Data.Typeable
 import Data.Traversable qualified
+import Data.Maybe
+import Data.List qualified
 
 newtype Jet a = Jet {
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
@@ -526,18 +528,43 @@ data AmIContinuing = Continuing
 bucketSplitter :: [Int] -> Splitter ByteString ByteString
 bucketSplitter buckets = MealyIO step (pure initial) coda
     where
-    -- monotonic = snd $ Data.Traversable.mapAccumL (\acc l -> let acc' = acc + l in (acc', acc')) 0 bucketlist
     initial = Pair NotContinuing buckets
-    step (Pair NotContinuing []) bs = pure (Pair Continuing [], SplitStepResult [] [] [bs])
-    step (Pair Continuing []) bs = pure (Pair Continuing [], SplitStepResult [bs] [] [])
-    step (Pair continuing buckets) bs =
-        pure $ go continuing bs buckets mempty mempty mempty 
-    go :: AmIContinuing -> ByteString -> [Int] -> DList ByteString -> DList [ByteString] -> DList ByteString -> (Triple Int AmIContinuing [Int], SplitStepResult ByteString)
-    go continuing bs buckets accPrevious accEntire accNew = undefined
-
+    step (Pair NotContinuing []) b = pure (Pair Continuing [], SplitStepResult [] [] [b])
+    step (Pair Continuing []) b = pure (Pair Continuing [], SplitStepResult [b] [] [])
+    step (Pair continuing buckets) b =
+        if 
+            | B.null b -> pure (Pair Continuing [], SplitStepResult [] [] [])
+            | otherwise -> do
+                let (mcontinues, b', buckets') = whatContinues continuing b buckets
+                    (entires, mnew, buckets'') = entireGroups mempty b' buckets''
+                    continuing' = case mnew of
+                        Nothing -> NotContinuing
+                        Just _ -> Continuing
+                 in pure (Pair continuing' buckets'', SplitStepResult {
+                             continuesPreviousGroup = maybeToList mcontinues,
+                             entireGroups = fmap Data.List.singleton entires,
+                             beginsNextGroup = maybeToList mnew
+                        })
+    whatContinues :: AmIContinuing -> ByteString -> [Int] -> (Maybe ByteString, ByteString, [Int]) 
+    whatContinues NotContinuing b buckets = (Nothing, b , buckets)
+    whatContinues Continuing b [] = (Nothing, b, buckets)
+    whatContinues Continuing b (bucket : buckets) = 
+        let blen = B.length b
+         in case compare blen bucket of
+                LT -> (Just b, mempty, bucket - blen : buckets)
+                EQ -> (Just b, mempty, buckets)
+                GT -> let (left,right) = B.splitAt bucket b
+                       in (Just left, right, buckets)
+    entireGroups :: DList ByteString -> ByteString -> [Int] -> ([ByteString], Maybe ByteString, [Int])
+    entireGroups acc b []                 = (closeDList $ acc <> singleton b, Nothing, [])
+    entireGroups acc b (bucket : buckets) = 
+        let blen = B.length b
+         in case compare blen bucket of
+                LT -> (closeDList acc , Just b, bucket - blen : buckets)
+                EQ -> (closeDList $ acc <> singleton b, Nothing, buckets)
+                GT -> let (left,right) = B.splitAt bucket b
+                       in entireGroups (acc <> singleton left) right buckets -- non-terminal
     coda = (\_ -> pure $ SplitStepResult [] [] [])
---    step (Triple acc False (x:xs)) bs = pure (Triple (acc + B.length bs) True [], SplitStepResult [] [] [bs])
---    step (Triple acc True (x:xs)) bs = pure (Triple (acc + B.length bs) True [], SplitStepResult [bs] [] [])
 
 -- | Uses the default system locale.
 instance JetSource Line Handle where
