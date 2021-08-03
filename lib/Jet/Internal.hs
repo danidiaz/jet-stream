@@ -815,7 +815,7 @@ numberOfWorkers number poolConf = poolConf { _numberOfWorkers = number }
 outputQueueSize :: Int -> PoolConf -> PoolConf 
 outputQueueSize size poolConf = poolConf { _outputQueueSize = size }
 
--- | An alias for "id". Useful with functions like 'traverseConcurrently' and
+-- | An alias for 'id'. Useful with functions like 'traverseConcurrently' and
 -- 'throughProcess', for which it means \"use the default configuration\".
 defaults :: a -> a
 defaults = id
@@ -1137,4 +1137,5 @@ data SplitStepResult b = SplitStepResult {
 -- TODO: bring NewlineException from "turtle". Leave it very clear in the docs
 -- which functions are partial!
 --
+-- TODO: write the "allocator" of Combiners.
 
