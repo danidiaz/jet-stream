@@ -560,6 +560,13 @@ splittableBlocksOverByteSizedBuckets buckets = MealyIO step (pure (Pair NotConti
     entireWith bdf = mempty { entireGroups = fmap pure (closeDList bdf) }
     nextWith b = mempty { beginsNextGroup = [b] }
 
+-- TODO: idea: when the size of the incoming byte block is greater than the size remaining in the bucket,
+-- don't split it, move it directly to the next bucket.
+unsplittableBlocksOverByteSizedBuckets :: [Int] -> Splitter ByteString ByteString
+unsplittableBlocksOverByteSizedBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) mempty
+    where
+    step = undefined
+
 -- | Uses the default system locale.
 instance JetSource Line Handle where
     jet handle = 
