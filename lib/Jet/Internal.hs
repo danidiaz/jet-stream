@@ -525,6 +525,7 @@ accumByteLengths = mapAccum (\acc bytes -> let acc' = acc + B.length bytes in (a
 data AmIContinuing = Continuing
                    | NotContinuing
 
+-- TODO: this still isn't quite right
 bucketSplitter :: [Int] -> Splitter ByteString ByteString
 bucketSplitter buckets = MealyIO step (pure initial) coda
     where
