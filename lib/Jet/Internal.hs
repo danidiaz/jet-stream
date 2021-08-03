@@ -530,32 +530,32 @@ bucketSplitter :: [Int] -> Splitter ByteString ByteString
 bucketSplitter buckets = MealyIO step (pure initial) coda
     where
     initial = Pair NotContinuing buckets
-    step (Pair NotContinuing []) b = pure (Pair Continuing [], SplitStepResult [] [] [b])
-    step (Pair Continuing []) b = pure (Pair Continuing [], SplitStepResult [b] [] [])
-    step (Pair continuing buckets) b =
-        if 
-            | B.null b -> pure (Pair Continuing [], SplitStepResult [] [] [])
-            | otherwise -> do
-                let (mcontinues, b', buckets') = whatContinues continuing b buckets
-                    (entires, mnew, buckets'') = entireGroups mempty b' buckets''
-                    continuing' = case mnew of
+    step (Pair continuing buckets) b = do
+        let (mcontinues, continuing', b', buckets') = whatContinues continuing b buckets
+            continuesResult = mempty { continuesPreviousGroup = maybeToList mcontinues }
+        pure case continuing' of
+            Continuing -> 
+                ( Pair Continuing buckets' , continuesResult )
+            NotContinuing ->
+                let (entires, mnew, buckets'') = entireGroups mempty b' buckets''
+                    continuing'' = case mnew of
                         Nothing -> NotContinuing
                         Just _ -> Continuing
-                 in pure (Pair continuing' buckets'', SplitStepResult {
-                             continuesPreviousGroup = maybeToList mcontinues,
-                             entireGroups = fmap Data.List.singleton entires,
-                             beginsNextGroup = maybeToList mnew
-                        })
-    whatContinues :: AmIContinuing -> ByteString -> [Int] -> (Maybe ByteString, ByteString, [Int]) 
-    whatContinues NotContinuing b buckets = (Nothing, b , buckets)
-    whatContinues Continuing b [] = (Nothing, b, buckets)
+                 in ( Pair continuing'' buckets''
+                    , continuesResult { 
+                            entireGroups = fmap Data.List.singleton entires, 
+                            beginsNextGroup = maybeToList mnew
+                    })
+    whatContinues :: AmIContinuing -> ByteString -> [Int] -> (Maybe ByteString, AmIContinuing, ByteString, [Int]) 
+    whatContinues NotContinuing b buckets = (Nothing, NotContinuing, b , buckets)
+    whatContinues Continuing b [] = (Nothing, Continuing, b, buckets)
     whatContinues Continuing b (bucket : buckets) = 
         let blen = B.length b
          in case compare blen bucket of
-                LT -> (Just b, mempty, bucket - blen : buckets)
-                EQ -> (Just b, mempty, buckets)
+                LT -> (Just b, Continuing, mempty, bucket - blen : buckets)
+                EQ -> (Just b, NotContinuing, mempty, buckets)
                 GT -> let (left,right) = B.splitAt bucket b
-                       in (Just left, right, buckets)
+                       in (Just left, NotContinuing, right, buckets)
     entireGroups :: DList ByteString -> ByteString -> [Int] -> ([ByteString], Maybe ByteString, [Int])
     entireGroups acc b []                 = (closeDList $ acc <> singleton b, Nothing, [])
     entireGroups acc b (bucket : buckets) = 
@@ -1240,6 +1240,12 @@ data SplitStepResult b = SplitStepResult {
   }
   deriving Functor
 
+instance Semigroup (SplitStepResult b) where
+    SplitStepResult c1 e1 b1 <> SplitStepResult c2 e2 b2 = 
+        SplitStepResult (c1 <> c2) (e1 <> e2) (b1 <> b2)
+
+instance Monoid (SplitStepResult b) where
+    mempty = SplitStepResult [] [] []
 
 -- TODO: bring NewlineException from "turtle". Leave it very clear in the docs
 -- which functions are partial!
