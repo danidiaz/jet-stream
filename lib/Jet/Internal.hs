@@ -997,7 +997,7 @@ data RecastState foldState = RecastState !(AreWeInsideGroup foldState) [IO foldS
 --
 -- If the list of combiners is finite and becomes exhausted, we stop splitting
 -- and the return 'Jet' stops.
-recast :: forall a b c . Splitter a b -> Combiners b c -> Jet a -> Jet c
+recast :: forall a b c . Splitter a b %1 -> Combiners b c -> Jet a -> Jet c
 recast (MealyIO splitterStep splitterAlloc splitterCoda) 
        (Combiners foldStep foldAllocs0 foldCoda) 
        (Jet upstream) = Jet \stop step initial -> do
@@ -1109,6 +1109,15 @@ deriving stock instance Functor (Combiners a)
 -- infinite) list of starting actions, and a coda.
 combiners :: (s -> a -> IO s) -> [IO s] -> (s -> IO b) -> Combiners a b
 combiners = combiners
+
+allocatingCombiners 
+    :: (s -> a -> IO s) -- ^ Step function that threads the state.
+    -> [IO s] -- ^ Allocators actions for the initial states.
+    -> (s -> IO b) -- ^ Coda.
+    -> (s -> IO ()) -- ^ Finalizer to run after each coda, and also in the case of exception.
+    -> (Combiners a b %1 -> IO r) -- ^ Linear continuation to prevent double-use of the combiner.
+    %1 -> IO r 
+allocatingCombiners step allocators coda finalizer = undefined
 
 -- | Delimits groups in the values yielded by a 'Jet', and can also transform
 -- those values.
