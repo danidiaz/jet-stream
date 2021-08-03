@@ -71,8 +71,10 @@ module Jet (
         J.lineToText,
         J.withLineText,
         -- ** These are partial functions
+        -- $partial
         J.textToLine,
         J.stringToLine,
+        J.NewlineForbidden(..),
         -- * Concurrency
         traverseConcurrently,
         PoolConf,
@@ -103,13 +105,16 @@ module Jet (
         Combiners,
         combiners,
         -- * Re-exports
+        -- $pipelines
+        (&),
+        (<&>),
+        -- $standardstreams
         stdin,
         stdout,
         stderr,
+        -- $process
         proc,
         shell,
-        (&),
-        (<&>),
     ) where
 
 import System.IO (stdin, stdout, stderr)
@@ -131,4 +136,20 @@ import Data.Functor ((<&>))
 -- $complicated
 --
 -- I didn't manage to make this stuff simpler.
+--
+
+-- $partial
+-- 'Line' doesn't admit newlines, so these convertion functions might throw 'NewlineForbidden' exceptions.
+--
+
+-- $pipelines
+-- I've found that the 'Data.Function.&' (reverse application) and 'Data.Functor.<&>' (reverse 'fmap')
+-- operators feel quite natural for building pipelines.
+
+-- $standardstreams
+-- The standard streams, useful with functions like 'sink'.
+--
+
+-- $process
+-- Functions that create process specs for use with 'throughProcess'. For more control, import the whole of "System.Process".
 --

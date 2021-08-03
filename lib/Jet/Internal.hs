@@ -58,6 +58,8 @@ import Control.Concurrent.STM.TBMQueue
 import Control.Concurrent.Async
 import System.Process
 import System.Exit
+import Data.String (IsString(..))
+import Data.Typeable
 
 newtype Jet a = Jet {
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
@@ -545,20 +547,27 @@ decodeUtf8 (Jet f) = Jet \stop step initial -> do
 encodeUtf8 :: Jet Text -> Jet ByteString
 encodeUtf8 = fmap T.encodeUtf8
 
+-- | A line of text (does not contain newlines).
 newtype Line = Line_ Text
     deriving newtype (Eq,Ord,Semigroup,Monoid,Show)
 
 -- https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/pattern_synonyms.html
 pattern Line text <- Line_ text
 
+-- | __BEWARE!__ 'fromString' is partial and may throw 'NewlineForbidden'.
+instance IsString Line where
+    fromString = stringToLine
+
 lineToText :: Line -> Text
 lineToText (Line_ text) = text
 
+-- | __BEWARE!__ Might throw 'NewlineForbidden' exceptions.
 textToLine :: Text -> Line
 textToLine text 
-    | Just _ <- T.find (=='\n') text = error "text for a line can't contain newlines!"
+    | Just _ <- T.find (=='\n') text = throw NewlineForbidden
     | otherwise = Line_ (removeTrailingCarriageReturn text)
 
+-- | __BEWARE!__ Might throw 'NewlineForbidden' exceptions.
 stringToLine :: String -> Line
 stringToLine = textToLine . T.pack
 
@@ -570,6 +579,14 @@ isEmptyLine (Line_ text) = T.null text
 
 emptyLine :: Line
 emptyLine = Line_ T.empty
+
+-- | Exception thrown when we find newlines in functions which don't accept them.
+--
+-- A direct copy of the @NewlineForbidden@ exception from the [turtle](https://hackage.haskell.org/package/turtle) package.
+data NewlineForbidden = NewlineForbidden
+  deriving (Show, Typeable)
+
+instance Exception NewlineForbidden
 
 newtype Utf8 a = Utf8 a
 
