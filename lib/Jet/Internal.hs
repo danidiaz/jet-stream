@@ -535,7 +535,7 @@ splittableBlocksIntoByteSizedBuckets buckets = MealyIO step (pure (Pair NotConti
                 ( Pair Continuing buckets' , continueResult )
             NotContinuing ->
                 mappend continueResult <$> entires mempty b' buckets' 
-    continue :: (Pair AmIContinuing [Int]) -> ByteString -> (Pair AmIContinuing [Int], SplitStepResult ByteString, ByteString)
+    continue :: Pair AmIContinuing [Int] -> ByteString -> (Pair AmIContinuing [Int], SplitStepResult ByteString, ByteString)
     continue (Pair NotContinuing buckets) b = 
         (Pair NotContinuing buckets, mempty, b)
     continue (Pair Continuing []) b = 
@@ -560,12 +560,17 @@ splittableBlocksIntoByteSizedBuckets buckets = MealyIO step (pure (Pair NotConti
     entireWith bdf = mempty { entireGroups = fmap pure (closeDList bdf) }
     nextWith b = mempty { beginsNextGroup = [b] }
 
+-- Newtype saying that some sequence of bytes must always go together an not be splitted across groups.
+newtype ByteBlock = ByteBlock [ByteString]
+
 -- TODO: idea: when the size of the incoming byte block is greater than the size remaining in the bucket,
--- don't split it, move it directly to the next bucket.
-unsplittableBlocksOverByteSizedBuckets :: [Int] -> Splitter ByteString ByteString
+-- don't split it, instead move it directly to the next bucket.
+unsplittableBlocksOverByteSizedBuckets :: [Int] -> Splitter ByteBlock ByteBlock
 unsplittableBlocksOverByteSizedBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) mempty
     where
     step = undefined
+    continue :: Pair AmIContinuing [Int] -> ByteString -> (Pair AmIContinuing [Int], SplitStepResult ByteString, ByteString)
+    continue = undefined
 
 -- | Uses the default system locale.
 instance JetSource Line Handle where
