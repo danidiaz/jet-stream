@@ -561,11 +561,16 @@ splittableBlocksIntoByteSizedBuckets buckets = MealyIO step (pure (Pair NotConti
     nextWith b = mempty { beginsNextGroup = [b] }
 
 -- Newtype saying that some sequence of bytes must always go together an not be splitted across groups.
-newtype ByteBlock = ByteBlock [ByteString]
+-- Idea: when we serialize a line... should it always include the newlines?
+-- encodeLineUtf8 :: Line -> SerializedEntity [ByteString]
+-- utf8Encode nah
+-- utf8Decode nah
+-- encodeLinesUtf8
+newtype SerializedEntity = SerializedEntity [ByteString]
 
 -- TODO: idea: when the size of the incoming byte block is greater than the size remaining in the bucket,
 -- don't split it, instead move it directly to the next bucket.
-unsplittableBlocksOverByteSizedBuckets :: [Int] -> Splitter ByteBlock ByteBlock
+unsplittableBlocksOverByteSizedBuckets :: [Int] -> Splitter SerializedEntity SerializedEntity
 unsplittableBlocksOverByteSizedBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) mempty
     where
     step = undefined
@@ -1256,4 +1261,9 @@ instance Monoid (SplitStepResult b) where
 -- which functions are partial!
 --
 -- TODO: write the "allocator" of Combiners.
+--
+-- TODO: encodeLinesUtf8 that creates a stream of SerializedEntity.
+-- and with that, perhaps remove the Utf8 newtype. It never made much sense.
+--
+
 
