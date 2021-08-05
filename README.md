@@ -62,11 +62,6 @@ To demonstrate that pending jobs are killed when we the a limit:
 
     ghci> each @Int [1,2,3] & traverseConcurrently id (\a -> (threadDelay 2e6 *> return (2^a)) `Control.Exception.onException` (print (show a ++ " was canceled"))) & Jet.limit 2 <&> show <&> T.pack & funnel stdout
 
-## Acknowledgements
-
-The `Line` type was copied (with some modifications) from Gabriela Gonzalez's
-[turtle](https://hackage.haskell.org/package/turtle).
-
 ## Some close cousins
 
 - [turtle](https://hackage.haskell.org/package/turtle). The `Shell` type kinda

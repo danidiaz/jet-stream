@@ -46,10 +46,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Data.Text.Encoding qualified as T
 import Data.Text.Encoding.Error qualified as T
-import Data.Text qualified as TL
-import Data.Text.IO qualified as TL
-import Data.Text.Encoding qualified as TL
-import Data.Text.Encoding.Error qualified as TL
+import Data.Text.Lazy qualified as TL
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Lazy qualified as BL
@@ -649,37 +646,44 @@ encodeUtf8 :: Jet Text -> Jet ByteString
 encodeUtf8 = fmap T.encodeUtf8
 
 -- | A line of text (does not contain newlines).
-newtype Line = Line_ Text
-    deriving newtype (Eq,Ord,Semigroup,Monoid,Show)
+newtype Line = Line_ TL.Text
+    deriving newtype (Eq,Ord,Semigroup,Monoid,Show,IsString)
 
 -- https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/pattern_synonyms.html
-pattern Line text <- Line_ text
-
--- | __BEWARE!__ 'fromString' is partial and may throw 'NewlineForbidden'.
-instance IsString Line where
-    fromString = stringToLine
+pattern Line text <- Line_ (TL.toStrict -> text)
 
 lineToText :: Line -> Text
-lineToText (Line_ text) = text
+lineToText (Line_ text) = TL.toStrict text
 
--- | __BEWARE!__ Might throw 'NewlineForbidden' exceptions.
 textToLine :: Text -> Line
-textToLine text 
-    | Just _ <- T.find (=='\n') text = throw NewlineForbidden
-    | otherwise = Line_ (removeTrailingCarriageReturn text)
+textToLine = Line_ . TL.fromStrict
+
+lineContains :: Text -> Line -> Bool 
+lineContains t (Line_ l)  = TL.isInfixOf (TL.fromStrict t) l
+
+lineBeginsWith :: Text -> Line -> Bool
+lineBeginsWith t (Line_ l) = TL.isPrefixOf (TL.fromStrict t) l
+
+prefixLine :: Text -> Line -> Line
+prefixLine t (Line_ l) = Line_ (TL.fromChunks (t : TL.toChunks l))
+
+-- textToLine :: Text -> Line
+-- textToLine text 
+--     | Just _ <- T.find (=='\n') text = throw NewlineForbidden
+--     | otherwise = Line_ (removeTrailingCarriageReturn text)
 
 -- | __BEWARE!__ Might throw 'NewlineForbidden' exceptions.
 stringToLine :: String -> Line
-stringToLine = textToLine . T.pack
+stringToLine = Line_ . TL.pack
 
-withLineText :: (Text -> r) -> Line -> r
-withLineText f (Line text) = f text 
+-- withLineText :: (Text -> r) -> Line -> r
+-- withLineText f (Line text) = f text 
 
 isEmptyLine :: Line -> Bool
-isEmptyLine (Line_ text) = T.null text 
+isEmptyLine (Line_ text) = TL.null text 
 
 emptyLine :: Line
-emptyLine = Line_ T.empty
+emptyLine = Line_ TL.empty
 
 -- | Exception thrown when we find newlines in functions which don't accept them.
 --

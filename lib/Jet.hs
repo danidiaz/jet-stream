@@ -73,12 +73,11 @@ module Jet (
         J.unlines,
         J.Line (Line),
         J.lineToText,
-        J.withLineText,
-        -- ** These are partial functions
-        -- $partial
         J.textToLine,
         J.stringToLine,
-        J.NewlineForbidden(..),
+        J.lineContains,
+        J.lineBeginsWith,
+        J.prefixLine,
         -- * Concurrency
         traverseConcurrently,
         PoolConf,
