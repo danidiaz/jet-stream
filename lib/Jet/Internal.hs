@@ -672,7 +672,6 @@ prefixLine t (Line_ l) = Line_ (TL.fromChunks (t : TL.toChunks l))
 --     | Just _ <- T.find (=='\n') text = throw NewlineForbidden
 --     | otherwise = Line_ (removeTrailingCarriageReturn text)
 
--- | __BEWARE!__ Might throw 'NewlineForbidden' exceptions.
 stringToLine :: String -> Line
 stringToLine = Line_ . TL.pack
 

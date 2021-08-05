@@ -142,10 +142,6 @@ import Data.Functor ((<&>))
 -- I didn't manage to make this stuff simpler.
 --
 
--- $partial
--- 'Line' doesn't admit newlines, so these convertion functions might throw 'NewlineForbidden' exceptions.
---
-
 -- $pipelines
 -- I've found that the 'Data.Function.&' (reverse application) and 'Data.Functor.<&>' (reverse 'fmap')
 -- operators feel quite natural for building pipelines.

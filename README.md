@@ -70,6 +70,8 @@ To demonstrate that pending jobs are killed when we the a limit:
   needed, at least judging from the docs for
   [limit](https://hackage.haskell.org/package/turtle-1.5.22/docs/Turtle-Prelude.html#v:limit).
 
+  \"turtle\" also inspired having a separate type for lines.
+
 - [streamly](https://hackage.haskell.org/package/streamly). I might have
   reinvented a subset of streamly ([but
   worse](https://www.mcmillen.dev/language_checklist.html)).
