@@ -24,6 +24,7 @@
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE ApplicativeDo #-}
 {-# OPTIONS_GHC -Wno-partial-type-signatures  #-}
 module Jet.Internal where
 
@@ -35,7 +36,7 @@ import Data.Foldable qualified
 import Prelude hiding (traverse_, for_, filter, drop, dropWhile, fold, take,
                        takeWhile, unfold, zip, zipWith, filterM, lines, intersperse, unlines)
 import Unsafe.Coerce qualified
-import System.IO (Handle, IOMode, hClose)
+import System.IO (Handle, IOMode(..), hClose, openBinaryFile)
 import System.IO qualified
 import Data.Function ((&))
 import Data.Functor ((<&>))
@@ -47,6 +48,7 @@ import Data.Text.IO qualified as T
 import Data.Text.Encoding qualified as T
 import Data.Text.Encoding.Error qualified as T
 import Data.Text.Lazy qualified as TL
+import Data.Text.Lazy.Encoding qualified as TL
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Lazy qualified as BL
@@ -645,7 +647,11 @@ decodeUtf8 (Jet f) = Jet \stop step initial -> do
 encodeUtf8 :: Jet Text -> Jet ByteString
 encodeUtf8 = fmap T.encodeUtf8
 
--- | A line of text (does not contain newlines).
+-- | A line of text.
+--
+-- While it is garanteed that the 'Line's coming out of the 'lines' function do
+-- not contain newlines, that invariant is not otherwise enforced in any other
+-- way.
 newtype Line = Line_ TL.Text
     deriving newtype (Eq,Ord,Semigroup,Monoid,Show,IsString)
 
@@ -692,17 +698,17 @@ data NewlineForbidden = NewlineForbidden
 
 instance Exception NewlineForbidden
 
-newtype Utf8 a = Utf8 a
-
-instance JetSource Text (Utf8 source) => JetSource Line (Utf8 source) where
-    jet source = do
-          jet @Text source
-        & lines
-
-instance JetSource ByteString source => JetSource Text (Utf8 source) where
-    jet (Utf8 source) = do
-          jet @ByteString source
-        & decodeUtf8  
+--newtype Utf8 a = Utf8 a
+--
+--instance JetSource Text (Utf8 source) => JetSource Line (Utf8 source) where
+--    jet source = do
+--          jet @Text source
+--        & lines
+--
+--instance JetSource ByteString source => JetSource Text (Utf8 source) where
+--    jet (Utf8 source) = do
+--          jet @ByteString source
+--        & decodeUtf8  
 
 removeTrailingCarriageReturn :: Text -> Text
 removeTrailingCarriageReturn text 
@@ -750,6 +756,16 @@ unlines j = do
     Line text <- j
     pure text <> pure (T.singleton '\n') 
 
+linesUtf8 :: Jet ByteString -> Jet Line
+linesUtf8 = lines . decodeUtf8
+
+unlinesUtf8 :: Jet Line -> Jet Serialized
+unlinesUtf8 j = do
+    Line_ text <- j
+    let newlined = TL.append text (TL.singleton '\n')
+        encoded = TL.encodeUtf8 newlined
+    pure (Serialized encoded)
+
 downstream :: (s -> Bool) -> (s -> x -> IO s) -> [x] -> s -> IO s
 downstream stop step = go
   where
@@ -776,15 +792,22 @@ instance JetSink a Handle => JetSink a File where
     sink (File path) j = System.IO.withFile path System.IO.WriteMode \handle ->
         sink handle j
 
-instance JetSink ByteString target => JetSink Text (Utf8 target) where 
-    sink (Utf8 target) j =
-        j & encodeUtf8
-          & sink target
+-- instance JetSink ByteString target => JetSink Text (Utf8 target) where 
+--     sink (Utf8 target) j =
+--         j & encodeUtf8
+--           & sink target
+-- 
+-- instance JetSink Text (Utf8 target) => JetSink Line (Utf8 target) where 
+--     sink target j =
+--         j & unlines
+--           & sink target
 
-instance JetSink Text (Utf8 target) => JetSink Line (Utf8 target) where 
-    sink target j =
-        j & unlines
-          & sink target
+
+instance JetSink ByteString target => JetSink Serialized target where 
+    sink target j = 
+        do s <- j
+           serializedBytes s
+        & sink target
 
 -- | Uses the default system locale.
 instance JetSink Line Handle where
@@ -796,7 +819,22 @@ instance JetSink Text Handle where
 
 newtype File = File { getFilePath :: FilePath } deriving Show
 
-pattern Utf8File filepath = Utf8 (File filepath)
+data BoundedByteSize x = BoundedByteSize Int x deriving stock (Show,Read)
+
+instance JetSink ByteString [BoundedByteSize File] where
+    sink bucketFiles j = 
+        withCombiners 
+               (\handle b -> B.hPut handle b *> pure handle)
+               (makeAllocator <$> bucketFiles)
+               (\_ -> pure ())
+               hClose
+               (\combiners -> drain $ recast (bytesOverBuckets bucketSizes) combiners j)
+      where
+        bucketSizes = map (\(BoundedByteSize size _) -> size) bucketFiles
+        makeAllocator :: BoundedByteSize File -> (IO Handle, Handle -> IO Handle)
+        makeAllocator (BoundedByteSize _ (File path)) = 
+            ( openBinaryFile path WriteMode
+            , return)
 
 -- DList helper
 newtype DList a = DList { runDList :: [a] -> [a] }
@@ -1300,9 +1338,7 @@ instance Semigroup (SplitStepResult b) where
 instance Monoid (SplitStepResult b) where
     mempty = SplitStepResult [] [] []
 
--- TODO: bring NewlineException from "turtle". Leave it very clear in the docs
--- which functions are partial!
---
+
 -- TODO: write the "allocator" of Combiners.
 --
 -- TODO: encodeLinesUtf8 that creates a stream of SerializedEntity.
@@ -1317,5 +1353,6 @@ instance Monoid (SplitStepResult b) where
 -- "aa\nbb\ncc\n"
 --
 -- TODO:
--- Line and SerializedEntity should be Lazy Text and Lazy ByteString, but hide the fact.
--- 
+-- remove Utf8 and instance like JetSink Line (Utf8 target)
+-- add ByteBounded x
+--

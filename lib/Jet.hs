@@ -71,6 +71,8 @@ module Jet (
         J.encodeUtf8,
         J.lines,
         J.unlines,
+        J.linesUtf8,
+        J.unlinesUtf8,
         J.Line (Line),
         J.lineToText,
         J.textToLine,
@@ -97,8 +99,6 @@ module Jet (
         J.JetSink (..),
         J.Sink (..),
         J.File (..),
-        J.Utf8 (..),
-        pattern J.Utf8File,
         -- * Some complicated stuff
         -- $complicated
         recast,
