@@ -592,7 +592,12 @@ entitiesOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0))
         pure case compare elen bucket of
             LT -> (Pair Continuing (bucket - elen : buckets), continueWith pieces)
             EQ -> (Pair NotContinuing buckets, continueWith pieces)
-            GT -> undefined -- what to do? throw an error if the next bucket is still small
+            GT -> do
+                case buckets of 
+                    nextbucket : _ | nextbucket < elen -> do
+                        undefined
+                    _ -> do
+                        undefined 
     step (Pair NotContinuing (bucket : buckets)) (SerializedEntity pieces) = 
         pure undefined
     continue :: Pair AmIContinuing [Int] -> ByteString -> (Pair AmIContinuing [Int], SplitStepResult ByteString, ByteString)
