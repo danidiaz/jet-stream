@@ -525,8 +525,8 @@ accumByteLengths = mapAccum (\acc bytes -> let acc' = acc + B.length bytes in (a
 data AmIContinuing = Continuing
                    | NotContinuing
 
-splittableBlocksIntoByteSizedBuckets :: [Int] -> Splitter ByteString ByteString
-splittableBlocksIntoByteSizedBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) mempty
+bytesOverBuckets :: [Int] -> Splitter ByteString ByteString
+bytesOverBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) mempty
     where
     step splitterState b = do
         let (Pair continuing' buckets', continueResult, b') = continue splitterState b
@@ -566,16 +566,40 @@ splittableBlocksIntoByteSizedBuckets buckets = MealyIO step (pure (Pair NotConti
 -- utf8Encode nah
 -- utf8Decode nah
 -- encodeLinesUtf8
-newtype SerializedEntity = SerializedEntity [ByteString]
+newtype SerializedEntity = SerializedEntity [ByteString] 
+
+serializedEntity :: Foldable f => f ByteString -> SerializedEntity
+serializedEntity = SerializedEntity . Data.Foldable.toList
+
+serializedEntityLength :: SerializedEntity -> Int
+serializedEntityLength (SerializedEntity pieces) = sum (map B.length pieces)
+
+serializedEntityBytes :: SerializedEntity -> Jet ByteString
+serializedEntityBytes (SerializedEntity pieces) = each pieces
 
 -- TODO: idea: when the size of the incoming byte block is greater than the size remaining in the bucket,
 -- don't split it, instead move it directly to the next bucket.
-unsplittableBlocksOverByteSizedBuckets :: [Int] -> Splitter SerializedEntity SerializedEntity
-unsplittableBlocksOverByteSizedBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) mempty
+entitiesOverBuckets :: [Int] -> Splitter SerializedEntity ByteString
+entitiesOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0)) mempty
     where
-    step = undefined
+    step :: Pair AmIContinuing [Int] -> SerializedEntity -> IO (Pair AmIContinuing [Int], SplitStepResult ByteString)
+    step (Pair Continuing []) (SerializedEntity pieces) = 
+        pure (Pair Continuing [], continueWith pieces)
+    step (Pair NotContinuing []) (SerializedEntity pieces) = 
+        pure (Pair Continuing [], nextWith pieces)
+    step (Pair Continuing (bucket : buckets)) e@(SerializedEntity pieces) = do
+        let elen = serializedEntityLength e
+        pure case compare elen bucket of
+            LT -> (Pair Continuing (bucket - elen : buckets), continueWith pieces)
+            EQ -> (Pair NotContinuing buckets, continueWith pieces)
+            GT -> undefined -- what to do? throw an error if the next bucket is still small
+    step (Pair NotContinuing (bucket : buckets)) (SerializedEntity pieces) = 
+        pure undefined
     continue :: Pair AmIContinuing [Int] -> ByteString -> (Pair AmIContinuing [Int], SplitStepResult ByteString, ByteString)
     continue = undefined
+    continueWith bs = mempty { continuesPreviousGroup = bs }
+    entireWith bdf = mempty { entireGroups = fmap pure (closeDList bdf) }
+    nextWith bs = mempty { beginsNextGroup = bs }
 
 -- | Uses the default system locale.
 instance JetSource Line Handle where
@@ -1266,4 +1290,10 @@ instance Monoid (SplitStepResult b) where
 -- and with that, perhaps remove the Utf8 newtype. It never made much sense.
 --
 
-
+-- ghci> Prelude.unlines ["aa\nbb"]
+-- "aa\nbb\n"
+-- ghci> Prelude.unlines ["aa\nbb"]
+--
+-- ghci> Prelude.unlines ["aa\nbb","cc"]
+-- "aa\nbb\ncc\n"
+--
