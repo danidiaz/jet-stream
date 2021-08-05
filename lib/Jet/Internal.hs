@@ -577,6 +577,12 @@ serializedEntityLength (SerializedEntity pieces) = sum (map B.length pieces)
 serializedEntityBytes :: SerializedEntity -> Jet ByteString
 serializedEntityBytes (SerializedEntity pieces) = each pieces
 
+
+data BucketOverflow = BucketOverflow
+  deriving (Show, Typeable)
+
+instance Exception BucketOverflow
+
 -- TODO: idea: when the size of the incoming byte block is greater than the size remaining in the bucket,
 -- don't split it, instead move it directly to the next bucket.
 entitiesOverBuckets :: [Int] -> Splitter SerializedEntity ByteString
@@ -589,21 +595,20 @@ entitiesOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0))
         pure (Pair Continuing [], nextWith pieces)
     step (Pair Continuing (bucket : buckets)) e@(SerializedEntity pieces) = do
         let elen = serializedEntityLength e
-        pure case compare elen bucket of
-            LT -> (Pair Continuing (bucket - elen : buckets), continueWith pieces)
-            EQ -> (Pair NotContinuing buckets, continueWith pieces)
-            GT -> do
-                case buckets of 
-                    nextbucket : _ | nextbucket < elen -> do
-                        undefined
-                    _ -> do
-                        undefined 
-    step (Pair NotContinuing (bucket : buckets)) (SerializedEntity pieces) = 
-        pure undefined
-    continue :: Pair AmIContinuing [Int] -> ByteString -> (Pair AmIContinuing [Int], SplitStepResult ByteString, ByteString)
-    continue = undefined
+        case compare elen bucket of
+            LT -> pure (Pair Continuing (bucket - elen : buckets), continueWith pieces)
+            EQ -> pure (Pair NotContinuing buckets, continueWith pieces)
+            -- NB: It's possible to close a bucket and open the next one in the same iteration.
+            GT -> step (Pair NotContinuing buckets) e
+    step (Pair NotContinuing (bucket : buckets)) e@(SerializedEntity pieces) = do
+        let elen = serializedEntityLength e
+        case compare elen bucket of
+            LT -> pure (Pair Continuing (bucket - elen : buckets), nextWith pieces)
+            EQ -> pure (Pair NotContinuing buckets, entireWith pieces)
+            -- if we can't fit an entity in a newly picked bucket, that sounds bad
+            GT -> throwIO BucketOverflow
     continueWith bs = mempty { continuesPreviousGroup = bs }
-    entireWith bdf = mempty { entireGroups = fmap pure (closeDList bdf) }
+    entireWith pieces = mempty { entireGroups = [pieces] }
     nextWith bs = mempty { beginsNextGroup = bs }
 
 -- | Uses the default system locale.
