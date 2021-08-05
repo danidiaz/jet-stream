@@ -589,24 +589,27 @@ entitiesOverBuckets :: [Int] -> Splitter SerializedEntity ByteString
 entitiesOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0)) mempty
     where
     step :: Pair AmIContinuing [Int] -> SerializedEntity -> IO (Pair AmIContinuing [Int], SplitStepResult ByteString)
-    step (Pair Continuing []) (SerializedEntity pieces) = 
-        pure (Pair Continuing [], continueWith pieces)
-    step (Pair NotContinuing []) (SerializedEntity pieces) = 
-        pure (Pair Continuing [], nextWith pieces)
-    step (Pair Continuing (bucket : buckets)) e@(SerializedEntity pieces) = do
+    step (Pair splitterState []) (SerializedEntity pieces) = 
+        -- We assume [] means "infinite bucket" so once we enter it we'll only be able to continue. 
+        pure ( Pair Continuing [],
+               case splitterState of
+                 Continuing -> continueWith pieces
+                 NotContinuing -> nextWith pieces )
+    step (Pair splitterState (bucket : buckets)) e@(SerializedEntity pieces) = do
         let elen = serializedEntityLength e
         case compare elen bucket of
-            LT -> pure (Pair Continuing (bucket - elen : buckets), continueWith pieces)
-            EQ -> pure (Pair NotContinuing buckets, continueWith pieces)
+            LT -> pure ( Pair Continuing (bucket - elen : buckets)
+                       , continueWith pieces )
+            EQ -> pure ( Pair NotContinuing buckets
+                       , case splitterState of
+                            Continuing -> continueWith pieces
+                            NotContinuing -> entireWith pieces )
             -- NB: It's possible to close a bucket and open the next one in the same iteration.
-            GT -> step (Pair NotContinuing buckets) e
-    step (Pair NotContinuing (bucket : buckets)) e@(SerializedEntity pieces) = do
-        let elen = serializedEntityLength e
-        case compare elen bucket of
-            LT -> pure (Pair Continuing (bucket - elen : buckets), nextWith pieces)
-            EQ -> pure (Pair NotContinuing buckets, entireWith pieces)
-            -- if we can't fit an entity in a newly picked bucket, that sounds bad
-            GT -> throwIO BucketOverflow
+            GT -> case splitterState of
+                Continuing -> step (Pair NotContinuing buckets) e
+                -- If we are not continuing, that means that the brand-new bucket hasn't 
+                -- enough space to hold a single entity. 
+                NotContinuing -> throwIO BucketOverflow
     continueWith bs = mempty { continuesPreviousGroup = bs }
     entireWith pieces = mempty { entireGroups = [pieces] }
     nextWith bs = mempty { beginsNextGroup = bs }
