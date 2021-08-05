@@ -537,14 +537,8 @@ bytesOverBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) memp
             NotContinuing ->
                 first (mappend continueResult) (entires mempty b' buckets')
     continue :: Pair AmIContinuing [Int] -> ByteString -> (SplitStepResult ByteString, Pair AmIContinuing [Int], ByteString)
-    continue (Pair NotContinuing buckets) b = 
-        ( mempty
-        , Pair NotContinuing buckets
-        , b)
-    continue (Pair Continuing []) b = 
-        ( continueWith b
-        , Pair Continuing buckets
-        , B.empty)
+    continue (Pair NotContinuing buckets) b = ( mempty ,         Pair NotContinuing buckets , b)
+    continue (Pair Continuing []) b =         ( continueWith b , Pair Continuing buckets ,    B.empty)
     continue (Pair Continuing (bucket : buckets)) b = 
         let blen = B.length b
          in case compare blen bucket of
@@ -581,7 +575,6 @@ serializedEntityLength (SerializedEntity pieces) = sum (map B.length pieces)
 
 serializedEntityBytes :: SerializedEntity -> Jet ByteString
 serializedEntityBytes (SerializedEntity pieces) = each pieces
-
 
 data BucketOverflow = BucketOverflow
   deriving (Show, Typeable)
