@@ -1308,3 +1308,6 @@ instance Monoid (SplitStepResult b) where
 -- ghci> Prelude.unlines ["aa\nbb","cc"]
 -- "aa\nbb\ncc\n"
 --
+-- TODO:
+-- Line and SerializedEntity should be Lazy Text and Lazy ByteString, but hide the fact.
+-- 
