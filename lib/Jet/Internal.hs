@@ -63,6 +63,7 @@ import Data.Typeable
 import Data.Traversable qualified
 import Data.Maybe
 import Data.List qualified
+import Data.Bifunctor (first)
 
 newtype Jet a = Jet {
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
@@ -529,31 +530,35 @@ bytesOverBuckets :: [Int] -> Splitter ByteString ByteString
 bytesOverBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) mempty
     where
     step splitterState b = do
-        let (Pair continuing' buckets', continueResult, b') = continue splitterState b
+        let (continueResult, Pair continuing' buckets', b') = continue splitterState b
         pure case continuing' of
             Continuing -> 
-                ( Pair Continuing buckets' , continueResult )
+                (continueResult , Pair Continuing buckets')
             NotContinuing ->
-                mappend continueResult <$> entires mempty b' buckets' 
-    continue :: Pair AmIContinuing [Int] -> ByteString -> (Pair AmIContinuing [Int], SplitStepResult ByteString, ByteString)
+                first (mappend continueResult) (entires mempty b' buckets')
+    continue :: Pair AmIContinuing [Int] -> ByteString -> (SplitStepResult ByteString, Pair AmIContinuing [Int], ByteString)
     continue (Pair NotContinuing buckets) b = 
-        (Pair NotContinuing buckets, mempty, b)
+        ( mempty
+        , Pair NotContinuing buckets
+        , b)
     continue (Pair Continuing []) b = 
-        (Pair Continuing buckets, continueWith b, B.empty)
+        ( continueWith b
+        , Pair Continuing buckets
+        , B.empty)
     continue (Pair Continuing (bucket : buckets)) b = 
         let blen = B.length b
          in case compare blen bucket of
-                LT -> (Pair Continuing (bucket - blen : buckets), continueWith b, B.empty)
-                EQ -> (Pair NotContinuing buckets, continueWith b, B.empty)
+                LT -> (continueWith b, Pair Continuing (bucket - blen : buckets), B.empty)
+                EQ -> (continueWith b, Pair NotContinuing buckets, B.empty)
                 GT -> let (left,right) = B.splitAt bucket b
-                       in (Pair NotContinuing buckets, continueWith left, right)  
-    entires :: DList ByteString -> ByteString -> [Int] -> (Pair AmIContinuing [Int], SplitStepResult ByteString)
-    entires acc b []                 = (Pair Continuing [], entireWith acc <> nextWith b)
+                       in (continueWith left, Pair NotContinuing buckets, right)  
+    entires :: DList ByteString -> ByteString -> [Int] -> (SplitStepResult ByteString, Pair AmIContinuing [Int])
+    entires acc b []                 = (entireWith acc <> nextWith b, Pair Continuing [])
     entires acc b (bucket : buckets) = 
         let blen = B.length b
          in case compare blen bucket of
-                LT -> (Pair Continuing (bucket - blen : buckets), entireWith acc <> nextWith b)
-                EQ -> (Pair NotContinuing buckets, entireWith (acc <> singleton b))
+                LT -> (entireWith acc <> nextWith b, Pair Continuing (bucket - blen : buckets))
+                EQ -> (entireWith (acc <> singleton b), Pair NotContinuing buckets)
                 GT -> let (left,right) = B.splitAt bucket b
                        in entires (acc <> singleton left) right buckets -- non-terminal
     continueWith b = mempty { continuesPreviousGroup = [b] }
@@ -588,22 +593,22 @@ instance Exception BucketOverflow
 entitiesOverBuckets :: [Int] -> Splitter SerializedEntity ByteString
 entitiesOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0)) mempty
     where
-    step :: Pair AmIContinuing [Int] -> SerializedEntity -> IO (Pair AmIContinuing [Int], SplitStepResult ByteString)
+    step :: Pair AmIContinuing [Int] -> SerializedEntity -> IO (SplitStepResult ByteString, Pair AmIContinuing [Int])
     step (Pair splitterState []) (SerializedEntity pieces) = 
         -- We assume [] means "infinite bucket" so once we enter it we'll only be able to continue. 
-        pure ( Pair Continuing [],
-               case splitterState of
+        pure ( case splitterState of
                  Continuing -> continueWith pieces
-                 NotContinuing -> nextWith pieces )
+                 NotContinuing -> nextWith pieces 
+             , Pair Continuing [])
     step (Pair splitterState (bucket : buckets)) e@(SerializedEntity pieces) = do
         let elen = serializedEntityLength e
         case compare elen bucket of
-            LT -> pure ( Pair Continuing (bucket - elen : buckets)
-                       , continueWith pieces )
-            EQ -> pure ( Pair NotContinuing buckets
-                       , case splitterState of
+            LT -> pure ( continueWith pieces 
+                       , Pair Continuing (bucket - elen : buckets) )
+            EQ -> pure ( case splitterState of
                             Continuing -> continueWith pieces
-                            NotContinuing -> entireWith pieces )
+                            NotContinuing -> entireWith pieces 
+                       ,  Pair NotContinuing buckets )
             -- NB: It's possible to close a bucket and open the next one in the same iteration.
             GT -> case splitterState of
                 Continuing -> step (Pair NotContinuing buckets) e
@@ -1106,7 +1111,7 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
       stop' (Triple _ (RecastState OutsideGroup []) _) = True
       stop' (Triple _ _ s) = stop s  
       step' (Triple splitterState recastState s) a = do
-        (splitterState', splitResult) <- splitterStep splitterState a 
+        (splitResult,  splitterState') <- splitterStep splitterState a 
         Pair recastState' s' <- advanceRecast splitResult recastState s 
         pure (Triple splitterState' recastState' s')
       advanceRecast ssr@(SplitStepResult {continuesPreviousGroup, entireGroups, beginsNextGroup}) (RecastState areWeInside foldAllocs) s = do
@@ -1258,7 +1263,7 @@ type Splitter a b = MealyIO a (SplitStepResult b)
 -- [foldl](https://hackage.haskell.org/package/foldl-1.4.12/docs/Control-Foldl.html#t:FoldM)
 -- library, but it emits an output at each step, not only at the end.
 data MealyIO a b where
-    MealyIO :: (s -> a -> IO (s,b)) -- ^ The step function which threads the state.
+    MealyIO :: (s -> a -> IO (b,s)) -- ^ The step function which threads the state.
             -> IO s -- ^ An action that produces the initial state.
             -> (s -> IO b) -- ^ The final output, produced from the final state.
             -> MealyIO a b
