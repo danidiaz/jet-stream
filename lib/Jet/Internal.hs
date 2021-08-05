@@ -738,9 +738,9 @@ lines (Jet f) = Jet \stop step initial -> do
           step final lineUnderConstruction
         
 unlines :: Jet Line -> Jet Text
-unlines j =
-    j & fmap lineToText
-      & intersperse (T.singleton '\n') 
+unlines j = do
+    Line text <- j
+    pure text <> pure (T.singleton '\n') 
 
 downstream :: (s -> Bool) -> (s -> x -> IO s) -> [x] -> s -> IO s
 downstream stop step = go
