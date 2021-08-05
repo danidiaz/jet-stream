@@ -831,10 +831,22 @@ instance JetSink ByteString [BoundedByteSize File] where
                (\combiners -> drain $ recast (bytesOverBuckets bucketSizes) combiners j)
       where
         bucketSizes = map (\(BoundedByteSize size _) -> size) bucketFiles
-        makeAllocator :: BoundedByteSize File -> (IO Handle, Handle -> IO Handle)
-        makeAllocator (BoundedByteSize _ (File path)) = 
-            ( openBinaryFile path WriteMode
-            , return)
+
+instance JetSink Serialized [BoundedByteSize File] where
+    sink bucketFiles j = 
+        withCombiners 
+               (\handle b -> B.hPut handle b *> pure handle)
+               (makeAllocator <$> bucketFiles)
+               (\_ -> pure ())
+               hClose
+               (\combiners -> drain $ recast (entitiesOverBuckets bucketSizes) combiners j)
+      where
+        bucketSizes = map (\(BoundedByteSize size _) -> size) bucketFiles
+
+makeAllocator :: BoundedByteSize File -> (IO Handle, Handle -> IO Handle)
+makeAllocator (BoundedByteSize _ (File path)) = 
+    ( openBinaryFile path WriteMode
+    , return)
 
 -- DList helper
 newtype DList a = DList { runDList :: [a] -> [a] }
@@ -1139,7 +1151,7 @@ data RecastState foldState = RecastState !(AreWeInsideGroup foldState) [IO foldS
 --
 -- If the list of combiners is finite and becomes exhausted, we stop splitting
 -- and the return 'Jet' stops.
-recast :: forall a b c . Splitter a b %1 -> Combiners b c -> Jet a -> Jet c
+recast :: forall a b c . Splitter a b -> Combiners b c -> Jet a -> Jet c
 recast (MealyIO splitterStep splitterAlloc splitterCoda) 
        (Combiners foldStep foldAllocs0 foldCoda) 
        (Jet upstream) = Jet \stop step initial -> do
@@ -1264,7 +1276,7 @@ withCombiners
     -> [(IO h, h -> IO s)] -- ^ Allocators actions that produce resource references and the initial states for processing each group.
     -> (s -> IO b) -- ^ Coda invoked when a group closes.
     -> (h -> IO ()) -- ^ Finalizer to run after each coda, and also in the case of an exception. 
-    -> (Combiners a b %1 -> IO r) -- ^ Linear continuation to prevent double-use of the combiners.
+    -> (Combiners a b -> IO r) -- ^ Linear continuation to prevent double-use of the combiners.
     -> IO r 
 withCombiners step allocators coda finalize continuation = do
     resourceRef <- newEmptyMVar @h
@@ -1353,6 +1365,13 @@ instance Monoid (SplitStepResult b) where
 -- "aa\nbb\ncc\n"
 --
 -- TODO:
--- remove Utf8 and instance like JetSink Line (Utf8 target)
 -- add ByteBounded x
 --
+-- perhaps change the type of withCombiners.
+--
+--  JetSink ByteString target => JetSink Serialized target#  
+--   JetSink ByteString [BoundedByteSize File]#  
+--    JetSink Serialized [BoundedByteSize File]#     
+--  ^ possible overlapping instances here :(
+--
+--  rethink the linear types in withCombiners. Maybe I need something like unrestricted?

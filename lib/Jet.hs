@@ -99,6 +99,8 @@ module Jet (
         J.JetSink (..),
         J.Sink (..),
         J.File (..),
+        J.BoundedByteSize (..),
+        J.BucketOverflow (..),
         -- * Some complicated stuff
         -- $complicated
         recast,
