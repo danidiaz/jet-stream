@@ -46,8 +46,13 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Data.Text.Encoding qualified as T
 import Data.Text.Encoding.Error qualified as T
+import Data.Text qualified as TL
+import Data.Text.IO qualified as TL
+import Data.Text.Encoding qualified as TL
+import Data.Text.Encoding.Error qualified as TL
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
+import Data.ByteString.Lazy qualified as BL
 
 import Control.Concurrent
 import Data.IORef
@@ -565,16 +570,16 @@ bytesOverBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) memp
 -- utf8Encode nah
 -- utf8Decode nah
 -- encodeLinesUtf8
-newtype SerializedEntity = SerializedEntity [ByteString] 
+newtype Serialized = Serialized BL.ByteString
 
-serializedEntity :: Foldable f => f ByteString -> SerializedEntity
-serializedEntity = SerializedEntity . Data.Foldable.toList
+serialized :: Foldable f => f ByteString -> Serialized
+serialized = Serialized . BL.fromChunks . Data.Foldable.toList
 
-serializedEntityLength :: SerializedEntity -> Int
-serializedEntityLength (SerializedEntity pieces) = sum (map B.length pieces)
+serializedLength :: Serialized -> Int
+serializedLength (Serialized value) = fromIntegral (BL.length value) -- Int64, but unlikely we'll reach the limit
 
-serializedEntityBytes :: SerializedEntity -> Jet ByteString
-serializedEntityBytes (SerializedEntity pieces) = each pieces
+serializedBytes :: Serialized -> Jet ByteString
+serializedBytes (Serialized value) = each (BL.toChunks value)
 
 data BucketOverflow = BucketOverflow
   deriving (Show, Typeable)
@@ -583,18 +588,18 @@ instance Exception BucketOverflow
 
 -- TODO: idea: when the size of the incoming byte block is greater than the size remaining in the bucket,
 -- don't split it, instead move it directly to the next bucket.
-entitiesOverBuckets :: [Int] -> Splitter SerializedEntity ByteString
+entitiesOverBuckets :: [Int] -> Splitter Serialized ByteString
 entitiesOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0)) mempty
     where
-    step :: Pair AmIContinuing [Int] -> SerializedEntity -> IO (SplitStepResult ByteString, Pair AmIContinuing [Int])
-    step (Pair splitterState []) (SerializedEntity pieces) = 
+    step :: Pair AmIContinuing [Int] -> Serialized -> IO (SplitStepResult ByteString, Pair AmIContinuing [Int])
+    step (Pair splitterState []) (Serialized pieces) = 
         -- We assume [] means "infinite bucket" so once we enter it we'll only be able to continue. 
         pure ( case splitterState of
                  Continuing -> continueWith pieces
                  NotContinuing -> nextWith pieces 
              , Pair Continuing [])
-    step (Pair splitterState (bucket : buckets)) e@(SerializedEntity pieces) = do
-        let elen = serializedEntityLength e
+    step (Pair splitterState (bucket : buckets)) e@(Serialized pieces) = do
+        let elen = serializedLength e
         case compare elen bucket of
             LT -> pure ( continueWith pieces 
                        , Pair Continuing (bucket - elen : buckets) )
@@ -608,9 +613,9 @@ entitiesOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0))
                 -- If we are not continuing, that means that the brand-new bucket hasn't 
                 -- enough space to hold a single entity. 
                 NotContinuing -> throwIO BucketOverflow
-    continueWith bs = mempty { continuesPreviousGroup = bs }
-    entireWith pieces = mempty { entireGroups = [pieces] }
-    nextWith bs = mempty { beginsNextGroup = bs }
+    continueWith bs = mempty { continuesPreviousGroup = BL.toChunks bs }
+    entireWith pieces = mempty { entireGroups = [BL.toChunks pieces] }
+    nextWith bs = mempty { beginsNextGroup = BL.toChunks bs }
 
 -- | Uses the default system locale.
 instance JetSource Line Handle where

@@ -62,10 +62,10 @@ module Jet (
         -- * Byte utils
         J.bytes,
         J.ChunkSize (..),
-        J.SerializedEntity,
-        J.serializedEntity,
-        J.serializedEntityLength,
-        J.serializedEntityBytes,
+        J.Serialized,
+        J.serialized,
+        J.serializedLength,
+        J.serializedBytes,
         -- * Text and line utils
         J.decodeUtf8,
         J.encodeUtf8,
