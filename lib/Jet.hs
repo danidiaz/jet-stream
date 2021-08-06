@@ -62,10 +62,10 @@ module Jet (
         -- * Byte utils
         J.bytes,
         J.ChunkSize (..),
-        J.Serialized,
-        J.serialized,
-        J.serializedLength,
-        J.serializedBytes,
+        J.ByteBundle,
+        J.bundle,
+        J.bundleLength,
+        J.bundleBytes,
         -- * Text and line utils
         J.decodeUtf8,
         J.encodeUtf8,
@@ -73,8 +73,8 @@ module Jet (
         J.lines,
         J.unlines,
         J.lineToText,
-        J.lineAndNewlineToUtf8,
         J.textToLine,
+        J.textToBundleUtf8,
         J.stringToLine,
         J.lineContains,
         J.lineBeginsWith,
@@ -110,7 +110,7 @@ module Jet (
         combiners,
         withCombiners,
         bytesOverBuckets,
-        serializedValuesOverBuckets,
+        byteBundlesOverBuckets,
         -- * Re-exports
         -- $pipelines
         (&),

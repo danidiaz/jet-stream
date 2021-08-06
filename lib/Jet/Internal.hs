@@ -570,24 +570,17 @@ bytesOverBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) memp
     entireWith bdf = mempty { entireGroups = fmap pure (closeDList bdf) }
     nextWith b = mempty { beginsNextGroup = [b] }
 
--- Newtype saying that some sequence of bytes must always go together an not be splitted across groups.
--- Idea: when we serialize a line... should it always include the newlines?
--- encodeLineUtf8 :: Line -> SerializedEntity [ByteString]
--- utf8Encode nah
--- utf8Decode nah
--- unlinesUtf8
+-- | A sequence of bytes that we might want to keep together.
+newtype ByteBundle = ByteBundle BL.ByteString deriving newtype (Show, Semigroup, Monoid)
 
--- | A sequence of bytes that we might want to keep together when grouping.
-newtype Serialized = Serialized BL.ByteString
+bundle :: Foldable f => f ByteString -> ByteBundle
+bundle = ByteBundle . BL.fromChunks . Data.Foldable.toList
 
-serialized :: Foldable f => f ByteString -> Serialized
-serialized = Serialized . BL.fromChunks . Data.Foldable.toList
+bundleLength :: ByteBundle -> Int
+bundleLength (ByteBundle value) = fromIntegral (BL.length value) -- Int64, but unlikely we'll reach the limit
 
-serializedLength :: Serialized -> Int
-serializedLength (Serialized value) = fromIntegral (BL.length value) -- Int64, but unlikely we'll reach the limit
-
-serializedBytes :: Serialized -> Jet ByteString
-serializedBytes (Serialized value) = each (BL.toChunks value)
+bundleBytes :: ByteBundle -> Jet ByteString
+bundleBytes (ByteBundle value) = each (BL.toChunks value)
 
 -- | Exception thrown when we try to write too much data in a size-bounded destination.
 data BucketOverflow = BucketOverflow
@@ -595,30 +588,30 @@ data BucketOverflow = BucketOverflow
 
 instance Exception BucketOverflow
 
--- | Splits a stream of serialized values into groups of a certain size. When
--- one group fills up, the next one is started. Bytes belonging to the same
--- 'Serialized' always go into the same group.
+-- | Splits a stream of 'ByteBundles' into groups of a certain size. When one
+-- group fills up, the next one is started. Bytes belonging to the same
+-- 'ByteBundle' always go into the same group.
 --
 -- When the list of buckets sizes is exhausted, all incoming bytes are put into
 -- the same unbounded group.
 --
 -- __BEWARE__: If the size bound of a group  turns out to be too small for
--- holding a single 'Serialized' value, a 'BucketOverflow' exception is thrown.
+-- holding a single 'ByteBundle' value, a 'BucketOverflow' exception is thrown.
 --
 -- Useful in combination with 'recast'.
 --
-serializedValuesOverBuckets :: [Int] -> Splitter Serialized ByteString
-serializedValuesOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0)) mempty
+byteBundlesOverBuckets :: [Int] -> Splitter ByteBundle ByteString
+byteBundlesOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0)) mempty
     where
-    step :: Pair AmIContinuing [Int] -> Serialized -> IO (SplitStepResult ByteString, Pair AmIContinuing [Int])
-    step (Pair splitterState []) (Serialized pieces) = 
+    step :: Pair AmIContinuing [Int] -> ByteBundle -> IO (SplitStepResult ByteString, Pair AmIContinuing [Int])
+    step (Pair splitterState []) (ByteBundle pieces) = 
         -- We assume [] means "infinite bucket" so once we enter it we'll only be able to continue. 
         pure ( case splitterState of
                  Continuing -> continueWith pieces
                  NotContinuing -> nextWith pieces 
              , Pair Continuing [])
-    step (Pair splitterState (bucket : buckets)) e@(Serialized pieces) = do
-        let elen = serializedLength e
+    step (Pair splitterState (bucket : buckets)) e@(ByteBundle pieces) = do
+        let elen = bundleLength e
         case compare elen bucket of
             LT -> pure ( case splitterState of
                              Continuing -> continueWith pieces
@@ -686,6 +679,9 @@ lineToText (Line_ text) = TL.toStrict text
 textToLine :: Text -> Line
 textToLine = Line_ . TL.fromStrict
 
+textToBundleUtf8 :: Text -> ByteBundle
+textToBundleUtf8 t = ByteBundle (t & T.encodeUtf8 & BL.fromStrict)
+
 lineContains :: Text -> Line -> Bool 
 lineContains t (Line_ l)  = TL.isInfixOf (TL.fromStrict t) l
 
@@ -719,18 +715,6 @@ data NewlineForbidden = NewlineForbidden
   deriving (Show, Typeable)
 
 instance Exception NewlineForbidden
-
---newtype Utf8 a = Utf8 a
---
---instance JetSource Text (Utf8 source) => JetSource Line (Utf8 source) where
---    jet source = do
---          jet @Text source
---        & lines
---
---instance JetSource ByteString source => JetSource Text (Utf8 source) where
---    jet (Utf8 source) = do
---          jet @ByteString source
---        & decodeUtf8  
 
 removeTrailingCarriageReturn :: Text -> Text
 removeTrailingCarriageReturn text 
@@ -778,15 +762,6 @@ unlines j = do
     Line text <- j
     pure text <> pure (T.singleton '\n') 
 
--- | Decodes a 'Line' to utf8, also re-adding the final newline.
---
--- @\\j -> fmap lineAndNewlineToUtf8 j >>= serializedBytes@ is equivalent to @encodeUtf8 . unlines@
-lineAndNewlineToUtf8 :: Line -> Serialized
-lineAndNewlineToUtf8 (Line_ text) =
-    let newlined = TL.append text (TL.singleton '\n')
-        encoded = TL.encodeUtf8 newlined
-     in Serialized encoded
-
 downstream :: (s -> Bool) -> (s -> x -> IO s) -> [x] -> s -> IO s
 downstream stop step = go
   where
@@ -813,17 +788,6 @@ instance JetSink a Handle => JetSink a File where
     sink (File path) j = System.IO.withFile path System.IO.WriteMode \handle ->
         sink handle j
 
--- instance JetSink ByteString target => JetSink Text (Utf8 target) where 
---     sink (Utf8 target) j =
---         j & encodeUtf8
---           & sink target
--- 
--- instance JetSink Text (Utf8 target) => JetSink Line (Utf8 target) where 
---     sink target j =
---         j & unlines
---           & sink target
-
-
 -- | Uses the default system locale.
 instance JetSink Line Handle where
     sink handle = traverse_ (T.hPutStrLn handle . lineToText)
@@ -836,10 +800,10 @@ newtype File = File { getFilePath :: FilePath } deriving Show
 
 data BoundedSize x = BoundedSize Int x deriving stock (Show,Read)
 
-instance JetSink Serialized Handle where
+instance JetSink ByteBundle Handle where
     sink handle j = traverse_ (B.hPut handle) do
         s <- j
-        serializedBytes s
+        bundleBytes s
 
 instance JetSink ByteString [BoundedSize File] where
     sink bucketFiles j = 
@@ -852,17 +816,17 @@ instance JetSink ByteString [BoundedSize File] where
       where
         bucketSizes = map (\(BoundedSize size _) -> size) bucketFiles
 
--- | Each 'Serialized' value is garanteed to be written to a single file. If a
--- file turns out to be too small for even a single 'Serialized' value, a
+-- | Each 'ByteBundle' value is garanteed to be written to a single file. If a
+-- file turns out to be too small for even a single 'ByteBundle' value, a
 -- 'BucketOverflow' exception is thrown.
-instance JetSink Serialized [BoundedSize File] where
+instance JetSink ByteBundle [BoundedSize File] where
     sink bucketFiles j = 
         withCombiners 
                (\handle () b -> B.hPut handle b)
                (makeAllocator <$> bucketFiles)
                (\_ _ -> pure ())
                hClose
-               (\combiners -> drain $ recast (serializedValuesOverBuckets bucketSizes) combiners j)
+               (\combiners -> drain $ recast (byteBundlesOverBuckets bucketSizes) combiners j)
       where
         bucketSizes = map (\(BoundedSize size _) -> size) bucketFiles
 
@@ -1377,30 +1341,6 @@ instance Semigroup (SplitStepResult b) where
 instance Monoid (SplitStepResult b) where
     mempty = SplitStepResult [] [] []
 
-
--- TODO: write the "allocator" of Combiners.
 --
--- TODO: unlinesUtf8 that creates a stream of SerializedEntity.
--- and with that, perhaps remove the Utf8 newtype. It never made much sense.
+-- TODO:  rethink the linear types in withCombiners. Maybe I need something like unrestricted?
 --
-
--- ghci> Prelude.unlines ["aa\nbb"]
--- "aa\nbb\n"
--- ghci> Prelude.unlines ["aa\nbb"]
---
--- ghci> Prelude.unlines ["aa\nbb","cc"]
--- "aa\nbb\ncc\n"
---
--- TODO:
--- add ByteBounded x
---
--- perhaps change the type of withCombiners.
---
---  JetSink ByteString target => JetSink Serialized target#  
---   JetSink ByteString [BoundedSize File]#  
---    JetSink Serialized [BoundedSize File]#     
---  ^ possible overlapping instances here :(
---
---  rethink the linear types in withCombiners. Maybe I need something like unrestricted?
---
--- TODO: perhaps remove the BucketOverflow exception... simply go to the next bucket!!!!
