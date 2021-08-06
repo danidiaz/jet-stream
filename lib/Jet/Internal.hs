@@ -1399,3 +1399,5 @@ instance Monoid (SplitStepResult b) where
 --  ^ possible overlapping instances here :(
 --
 --  rethink the linear types in withCombiners. Maybe I need something like unrestricted?
+--
+-- TODO: perhaps remove the BucketOverflow exception... simply go to the next bucket!!!!
