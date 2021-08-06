@@ -89,7 +89,7 @@ module Jet (
         -- * Process invocation
         throughProcess,
         linesThroughProcess,
-        linesUtf8ThroughProcess,
+        linesThroughProcessUtf8,
         ProcConf,
         bufferStdin,
         readFromStderr,
@@ -110,6 +110,8 @@ module Jet (
         Combiners,
         combiners,
         withCombiners,
+        bytesOverBuckets,
+        serializedOverBuckets,
         -- * Re-exports
         -- $pipelines
         (&),

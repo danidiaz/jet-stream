@@ -530,6 +530,13 @@ accumByteLengths = mapAccum (\acc bytes -> let acc' = acc + B.length bytes in (a
 data AmIContinuing = Continuing
                    | NotContinuing
 
+-- | Splits a stream of bytes into groups of a certain size. When one group
+-- fills up, the next one is started.
+--
+-- When the list of buckets sizes is exhausted, all incoming bytes are put into
+-- the same unbounded group.
+--
+-- Useful in combination with 'recast'.
 bytesOverBuckets :: [Int] -> Splitter ByteString ByteString
 bytesOverBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) mempty
     where
@@ -586,10 +593,20 @@ data BucketOverflow = BucketOverflow
 
 instance Exception BucketOverflow
 
--- TODO: idea: when the size of the incoming byte block is greater than the size remaining in the bucket,
--- don't split it, instead move it directly to the next bucket.
-entitiesOverBuckets :: [Int] -> Splitter Serialized ByteString
-entitiesOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0)) mempty
+-- | Splits a stream of serialized values into groups of a certain size. When
+-- one group fills up, the next one is started. Bytes belonging to the same
+-- 'Serialized' always go into the same group.
+--
+-- When the list of buckets sizes is exhausted, all incoming bytes are put into
+-- the same unbounded group.
+--
+-- __BEWARE__: If the size bound of a group  turns out to be too small for even
+-- a single 'Serialized' value, a 'BucketOverflow' exception is thrown.
+--
+-- Useful in combination with 'recast'.
+--
+serializedOverBuckets :: [Int] -> Splitter Serialized ByteString
+serializedOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0)) mempty
     where
     step :: Pair AmIContinuing [Int] -> Serialized -> IO (SplitStepResult ByteString, Pair AmIContinuing [Int])
     step (Pair splitterState []) (Serialized pieces) = 
@@ -824,9 +841,9 @@ instance JetSink Serialized Handle where
 instance JetSink ByteString [BoundedSize File] where
     sink bucketFiles j = 
         withCombiners 
-               (\handle b -> B.hPut handle b *> pure handle)
+               (\handle () b -> B.hPut handle b)
                (makeAllocator <$> bucketFiles)
-               (\_ -> pure ())
+               (\_ _ -> pure ())
                hClose
                (\combiners -> drain $ recast (bytesOverBuckets bucketSizes) combiners j)
       where
@@ -838,18 +855,18 @@ instance JetSink ByteString [BoundedSize File] where
 instance JetSink Serialized [BoundedSize File] where
     sink bucketFiles j = 
         withCombiners 
-               (\handle b -> B.hPut handle b *> pure handle)
+               (\handle () b -> B.hPut handle b)
                (makeAllocator <$> bucketFiles)
-               (\_ -> pure ())
+               (\_ _ -> pure ())
                hClose
-               (\combiners -> drain $ recast (entitiesOverBuckets bucketSizes) combiners j)
+               (\combiners -> drain $ recast (serializedOverBuckets bucketSizes) combiners j)
       where
         bucketSizes = map (\(BoundedSize size _) -> size) bucketFiles
 
-makeAllocator :: BoundedSize File -> (IO Handle, Handle -> IO Handle)
+makeAllocator :: BoundedSize File -> (IO Handle, Handle -> IO ())
 makeAllocator (BoundedSize _ (File path)) = 
     ( openBinaryFile path WriteMode
-    , return)
+    , \_ -> pure ())
 
 -- DList helper
 newtype DList a = DList { runDList :: [a] -> [a] }
@@ -1018,8 +1035,8 @@ linesThroughProcess adaptConf procSpec = do
     fmap textToLine . throughProcess_ textLinesProcConf procSpec . fmap lineToText
 
 -- | Like 'throughProcess', but feeding and reading 'Line's encoded in UTF8.
-linesUtf8ThroughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
-linesUtf8ThroughProcess adaptConf procSpec = do
+linesThroughProcessUtf8 :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
+linesThroughProcessUtf8 adaptConf procSpec = do
     lines . decodeUtf8 . throughProcess adaptConf procSpec . encodeUtf8 . unlines
 
 throughProcess_ :: forall a b . ProcConf_ a b -> CreateProcess -> Jet a -> Jet b
@@ -1267,41 +1284,45 @@ deriving stock instance Functor (Combiners a)
 
 -- | Constructor for 'Combiners' values.
 combiners 
-    :: (s -> a -> IO s) -- ^ Step function that threads the state.
-    -> [IO s] -- ^ Actions that produce the initial states for processing each group.
+    :: (s -> a -> IO s) -- ^ Step function that threads the state @s@.
+    -> [IO s] -- ^ Actions that produce the initial states @s@ for processing each group.
     -> (s -> IO b) -- ^ Coda invoked when a group closes.
     -> Combiners a b
 combiners = combiners
 
 withCombiners 
     :: forall h s a b r .
-       (s -> a -> IO s) -- ^ Step function that threads the state.
-    -> [(IO h, h -> IO s)] -- ^ Allocators actions that produce resource references and the initial states for processing each group.
-    -> (s -> IO b) -- ^ Coda invoked when a group closes.
+       (h -> s -> a -> IO s) -- ^ Step function that accesses the resource @h@ and threads the state @s@.
+    -> [(IO h, h -> IO s)] -- ^ Actions that allocate resources @h@ and produce initial states @s@ for processing each group.
+    -> (h -> s -> IO b) -- ^ Coda invoked when a group closes.
     -> (h -> IO ()) -- ^ Finalizer to run after each coda, and also in the case of an exception. 
     -> (Combiners a b -> IO r) -- ^ Linear continuation to prevent double-use of the combiners.
     -> IO r 
 withCombiners step allocators coda finalize continuation = do
     resourceRef <- newEmptyMVar @h
     let  
+        step' (Pair h s) a = do
+            s' <- step h s a
+            pure (Pair h s')
         tryFinalize = do
             tryTakeMVar resourceRef >>= \case
                 Nothing -> pure ()
                 Just resource -> finalize resource
-        adaptAllocator :: (IO h, h -> IO s) -> IO s
+        adaptAllocator :: (IO h, h -> IO s) -> IO (Pair h s)
         adaptAllocator (allocate, makeInitialState) = do
             h <- mask_ do
                 h <- allocate
                 putMVar resourceRef h
                 pure h
-            makeInitialState h 
-        coda' :: s -> IO b
-        coda' s = do
-            b <- coda s
+            s <- makeInitialState h 
+            pure (Pair h s)
+        coda' :: Pair h s -> IO b
+        coda' (Pair h s) = do
+            b <- coda h s
             -- this always succeeds, we store the resource at the beginning!
             mask_ tryFinalize
             pure b
-    r <- (continuation (combiners step (adaptAllocator <$> allocators) coda'))
+    r <- (continuation (combiners step' (adaptAllocator <$> allocators) coda'))
          `Control.Exception.finally`
          tryFinalize
     pure r
