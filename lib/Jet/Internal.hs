@@ -69,6 +69,13 @@ import Data.Maybe
 import Data.List qualified
 import Data.Bifunctor (first)
 
+-- $setup
+--
+-- >>> :set -XTypeApplications
+-- >>> :set -XImportQualifiedPost
+-- >>> import Jet qualified as J
+-- >>> import Control.Foldl qualified as L
+
 newtype Jet a = Jet {
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
     } deriving (Functor)
@@ -165,6 +172,11 @@ instance MonadPlus Jet where
 instance MonadFail Jet where
   fail _ = mzero
 
+-- | Produce a 'Jet' from any 'Foldable' container
+--
+-- >>> J.each [True,False] & J.toList
+-- [True,False]
+--
 each :: forall a f . Foldable f => f a -> Jet a
 each (Data.Foldable.toList -> seed) = Jet \stop step ->
   -- This could be done with Jet.unfold, but let's leave as it is.
@@ -182,9 +194,22 @@ each (Data.Foldable.toList -> seed) = Jet \stop step ->
                   go xs s'
    in go seed
 
+-- |
+--
+-- >>> J.repeat True & take 2 & J.toList
+-- [True,True]
+--
 repeat :: a -> Jet a
 repeat a = repeatIO (pure a)
 
+
+-- TODO: bug in repeat below?
+
+-- |
+--
+-- >>> J.repeat (putStrLn "hi" *> pure True) & J.take 2 & J.toList
+--
+--
 repeatIO :: IO a -> Jet a
 repeatIO action = untilNothing (fmap Just action)
 

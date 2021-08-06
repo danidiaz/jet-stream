@@ -26,13 +26,11 @@ In order to achieve those objectives, the following sacrifices have been made:
   like you can do for example in
   [streaming](https://hackage.haskell.org/package/streaming-0.2.3.0/docs/Streaming-Prelude.html#v:next).
 
-- There are `take` and `drop` operations, but no `splitAt` (in contrast with
-  [streaming](https://hackage.haskell.org/package/streaming-0.2.3.0/docs/Streaming-Prelude.html#v:next)
-  which represents
-  [`splitAt`](https://hackage.haskell.org/package/streaming-0.2.3.0/docs/Streaming-Prelude.html#v:splitAt)
-  very elegantly). 
-
-- Grouping operations are underpowered (In fact, they don't exist right now.)
+- Grouping and splitting operations are cumbersome and underpowered, especially
+  compared to libraries like
+  [streaming]((https://hackage.haskell.org/package/streaming-0.2.3.0/docs/Streaming-Prelude.html#v:next))
+  or
+  [streaming-bytestring](https://hackage.haskell.org/package/streaming-bytestring).
 
 ## What about performance?
 
