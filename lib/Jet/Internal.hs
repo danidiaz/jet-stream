@@ -618,7 +618,9 @@ serializedOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0
     step (Pair splitterState (bucket : buckets)) e@(Serialized pieces) = do
         let elen = serializedLength e
         case compare elen bucket of
-            LT -> pure ( continueWith pieces 
+            LT -> pure ( case splitterState of
+                             Continuing -> continueWith pieces
+                             NotContinuing -> nextWith pieces
                        , Pair Continuing (bucket - elen : buckets) )
             EQ -> pure ( case splitterState of
                             Continuing -> continueWith pieces
