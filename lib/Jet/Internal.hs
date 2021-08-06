@@ -580,6 +580,7 @@ serializedLength (Serialized value) = fromIntegral (BL.length value) -- Int64, b
 serializedBytes :: Serialized -> Jet ByteString
 serializedBytes (Serialized value) = each (BL.toChunks value)
 
+-- | Exception thrown when we try to write too much data in a size-bounded destination.
 data BucketOverflow = BucketOverflow
   deriving (Show, Typeable)
 
@@ -831,6 +832,9 @@ instance JetSink ByteString [BoundedSize File] where
       where
         bucketSizes = map (\(BoundedSize size _) -> size) bucketFiles
 
+-- | Each 'Serialized' value is garanteed to be written to a single file. If a
+-- file turns out to be too small for even a single 'Serialized' value, a
+-- 'BucketOverflow' exception is thrown.
 instance JetSink Serialized [BoundedSize File] where
     sink bucketFiles j = 
         withCombiners 

@@ -62,6 +62,10 @@ To demonstrate that pending jobs are killed when we the a limit:
 
     ghci> each @Int [1,2,3] & traverseConcurrently id (\a -> (threadDelay 2e6 *> return (2^a)) `Control.Exception.onException` (print (show a ++ " was canceled"))) & Jet.limit 2 <&> show <&> T.pack & funnel stdout
 
+Example of bounded size:
+
+    ghci> jet (File "foo.txt") & unlinesUtf8 & sink [BoundedSize 1000 (File "bar.txt")]
+
 ## Some close cousins
 
 - [turtle](https://hackage.haskell.org/package/turtle). The `Shell` type kinda
