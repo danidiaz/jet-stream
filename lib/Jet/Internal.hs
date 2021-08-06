@@ -666,9 +666,6 @@ decodeUtf8 (Jet f) = Jet \stop step initial -> do
         let T.Some _ _ g = T.streamDecodeUtf8 B.empty
          in g
 
-encodeUtf8 :: Text -> ByteString
-encodeUtf8 = T.encodeUtf8
-
 -- | A line of text.
 --
 -- While it is garanteed that the 'Line's coming out of the 'lines' function do
@@ -779,7 +776,8 @@ unlines j = do
     pure text <> pure (T.singleton '\n') 
 
 -- | Converts a single 'Line' value to utf8, adding the final newline back.
---
+-- 
+-- @\j -> (j \<&\> encodeLineUtf8) >>= serializedBytes@ is equivalent to @\j -> j & unlines \<&\> encodeUtf8@
 encodeLineUtf8 :: Line -> Serialized
 encodeLineUtf8 (Line_ text) =
     let newlined = TL.append text (TL.singleton '\n')
@@ -1039,7 +1037,7 @@ linesThroughProcess adaptConf procSpec = do
 -- | Like 'throughProcess', but feeding and reading 'Line's encoded in UTF8.
 utf8LinesThroughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
 utf8LinesThroughProcess adaptConf procSpec = do
-    lines . decodeUtf8 . throughProcess adaptConf procSpec . fmap encodeUtf8 . unlines
+    lines . decodeUtf8 . throughProcess adaptConf procSpec . fmap T.encodeUtf8 . unlines
 
 throughProcess_ :: forall a b . ProcConf_ a b -> CreateProcess -> Jet a -> Jet b
 throughProcess_  procConf procSpec upstream = Jet \stop step initial -> do
