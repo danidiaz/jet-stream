@@ -803,12 +803,6 @@ instance JetSink a Handle => JetSink a File where
 --           & sink target
 
 
-instance JetSink ByteString target => JetSink Serialized target where 
-    sink target j = 
-        do s <- j
-           serializedBytes s
-        & sink target
-
 -- | Uses the default system locale.
 instance JetSink Line Handle where
     sink handle = traverse_ (T.hPutStrLn handle . lineToText)
@@ -819,9 +813,14 @@ instance JetSink Text Handle where
 
 newtype File = File { getFilePath :: FilePath } deriving Show
 
-data BoundedByteSize x = BoundedByteSize Int x deriving stock (Show,Read)
+data BoundedSize x = BoundedSize Int x deriving stock (Show,Read)
 
-instance JetSink ByteString [BoundedByteSize File] where
+instance JetSink Serialized Handle where
+    sink handle j = traverse_ (B.hPut handle) do
+        s <- j
+        serializedBytes s
+
+instance JetSink ByteString [BoundedSize File] where
     sink bucketFiles j = 
         withCombiners 
                (\handle b -> B.hPut handle b *> pure handle)
@@ -830,9 +829,9 @@ instance JetSink ByteString [BoundedByteSize File] where
                hClose
                (\combiners -> drain $ recast (bytesOverBuckets bucketSizes) combiners j)
       where
-        bucketSizes = map (\(BoundedByteSize size _) -> size) bucketFiles
+        bucketSizes = map (\(BoundedSize size _) -> size) bucketFiles
 
-instance JetSink Serialized [BoundedByteSize File] where
+instance JetSink Serialized [BoundedSize File] where
     sink bucketFiles j = 
         withCombiners 
                (\handle b -> B.hPut handle b *> pure handle)
@@ -841,10 +840,10 @@ instance JetSink Serialized [BoundedByteSize File] where
                hClose
                (\combiners -> drain $ recast (entitiesOverBuckets bucketSizes) combiners j)
       where
-        bucketSizes = map (\(BoundedByteSize size _) -> size) bucketFiles
+        bucketSizes = map (\(BoundedSize size _) -> size) bucketFiles
 
-makeAllocator :: BoundedByteSize File -> (IO Handle, Handle -> IO Handle)
-makeAllocator (BoundedByteSize _ (File path)) = 
+makeAllocator :: BoundedSize File -> (IO Handle, Handle -> IO Handle)
+makeAllocator (BoundedSize _ (File path)) = 
     ( openBinaryFile path WriteMode
     , return)
 
@@ -1015,8 +1014,8 @@ linesThroughProcess adaptConf procSpec = do
     fmap textToLine . throughProcess_ textLinesProcConf procSpec . fmap lineToText
 
 -- | Like 'throughProcess', but feeding and reading 'Line's encoded in UTF8.
-utf8LinesThroughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
-utf8LinesThroughProcess adaptConf procSpec = do
+linesUtf8ThroughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
+linesUtf8ThroughProcess adaptConf procSpec = do
     lines . decodeUtf8 . throughProcess adaptConf procSpec . encodeUtf8 . unlines
 
 throughProcess_ :: forall a b . ProcConf_ a b -> CreateProcess -> Jet a -> Jet b
@@ -1370,8 +1369,8 @@ instance Monoid (SplitStepResult b) where
 -- perhaps change the type of withCombiners.
 --
 --  JetSink ByteString target => JetSink Serialized target#  
---   JetSink ByteString [BoundedByteSize File]#  
---    JetSink Serialized [BoundedByteSize File]#     
+--   JetSink ByteString [BoundedSize File]#  
+--    JetSink Serialized [BoundedSize File]#     
 --  ^ possible overlapping instances here :(
 --
 --  rethink the linear types in withCombiners. Maybe I need something like unrestricted?

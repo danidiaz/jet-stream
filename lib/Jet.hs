@@ -89,7 +89,7 @@ module Jet (
         -- * Process invocation
         throughProcess,
         linesThroughProcess,
-        utf8LinesThroughProcess,
+        linesUtf8ThroughProcess,
         ProcConf,
         bufferStdin,
         readFromStderr,
@@ -99,7 +99,7 @@ module Jet (
         J.JetSink (..),
         J.Sink (..),
         J.File (..),
-        J.BoundedByteSize (..),
+        J.BoundedSize (..),
         J.BucketOverflow (..),
         -- * Some complicated stuff
         -- $complicated
