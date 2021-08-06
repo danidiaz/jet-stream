@@ -69,11 +69,10 @@ module Jet (
         -- * Text and line utils
         J.decodeUtf8,
         J.encodeUtf8,
+        J.Line (Line),
         J.lines,
         J.unlines,
-        J.linesUtf8,
-        J.unlinesUtf8,
-        J.Line (Line),
+        J.encodeLineUtf8,
         J.lineToText,
         J.textToLine,
         J.stringToLine,
@@ -89,7 +88,7 @@ module Jet (
         -- * Process invocation
         throughProcess,
         linesThroughProcess,
-        linesThroughProcessUtf8,
+        utf8LinesThroughProcess,
         ProcConf,
         bufferStdin,
         readFromStderr,

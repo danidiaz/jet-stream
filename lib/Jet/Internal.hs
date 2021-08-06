@@ -576,6 +576,8 @@ bytesOverBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) memp
 -- utf8Encode nah
 -- utf8Decode nah
 -- encodeLinesUtf8
+
+-- | A sequence of bytes that we might want to keep together when grouping.
 newtype Serialized = Serialized BL.ByteString
 
 serialized :: Foldable f => f ByteString -> Serialized
@@ -664,8 +666,8 @@ decodeUtf8 (Jet f) = Jet \stop step initial -> do
         let T.Some _ _ g = T.streamDecodeUtf8 B.empty
          in g
 
-encodeUtf8 :: Jet Text -> Jet ByteString
-encodeUtf8 = fmap T.encodeUtf8
+encodeUtf8 :: Text -> ByteString
+encodeUtf8 = T.encodeUtf8
 
 -- | A line of text.
 --
@@ -776,15 +778,13 @@ unlines j = do
     Line text <- j
     pure text <> pure (T.singleton '\n') 
 
-linesUtf8 :: Jet ByteString -> Jet Line
-linesUtf8 = lines . decodeUtf8
-
-unlinesUtf8 :: Jet Line -> Jet Serialized
-unlinesUtf8 j = do
-    Line_ text <- j
+-- | Converts a single 'Line' value to utf8, adding the final newline back.
+--
+encodeLineUtf8 :: Line -> Serialized
+encodeLineUtf8 (Line_ text) =
     let newlined = TL.append text (TL.singleton '\n')
         encoded = TL.encodeUtf8 newlined
-    pure (Serialized encoded)
+     in Serialized encoded
 
 downstream :: (s -> Bool) -> (s -> x -> IO s) -> [x] -> s -> IO s
 downstream stop step = go
@@ -1037,9 +1037,9 @@ linesThroughProcess adaptConf procSpec = do
     fmap textToLine . throughProcess_ textLinesProcConf procSpec . fmap lineToText
 
 -- | Like 'throughProcess', but feeding and reading 'Line's encoded in UTF8.
-linesThroughProcessUtf8 :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
-linesThroughProcessUtf8 adaptConf procSpec = do
-    lines . decodeUtf8 . throughProcess adaptConf procSpec . encodeUtf8 . unlines
+utf8LinesThroughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
+utf8LinesThroughProcess adaptConf procSpec = do
+    lines . decodeUtf8 . throughProcess adaptConf procSpec . fmap encodeUtf8 . unlines
 
 throughProcess_ :: forall a b . ProcConf_ a b -> CreateProcess -> Jet a -> Jet b
 throughProcess_  procConf procSpec upstream = Jet \stop step initial -> do
