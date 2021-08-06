@@ -1288,7 +1288,7 @@ combiners
     -> [IO s] -- ^ Actions that produce the initial states @s@ for processing each group.
     -> (s -> IO b) -- ^ Coda invoked when a group closes.
     -> Combiners a b
-combiners = combiners
+combiners = Combiners
 
 withCombiners 
     :: forall h s a b r .
