@@ -575,7 +575,7 @@ bytesOverBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) memp
 -- encodeLineUtf8 :: Line -> SerializedEntity [ByteString]
 -- utf8Encode nah
 -- utf8Decode nah
--- encodeLinesUtf8
+-- unlinesUtf8
 
 -- | A sequence of bytes that we might want to keep together when grouping.
 newtype Serialized = Serialized BL.ByteString
@@ -602,13 +602,13 @@ instance Exception BucketOverflow
 -- When the list of buckets sizes is exhausted, all incoming bytes are put into
 -- the same unbounded group.
 --
--- __BEWARE__: If the size bound of a group  turns out to be too small for even
--- a single 'Serialized' value, a 'BucketOverflow' exception is thrown.
+-- __BEWARE__: If the size bound of a group  turns out to be too small for
+-- holding a single 'Serialized' value, a 'BucketOverflow' exception is thrown.
 --
 -- Useful in combination with 'recast'.
 --
-serializedOverBuckets :: [Int] -> Splitter Serialized ByteString
-serializedOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0)) mempty
+serializedValuesOverBuckets :: [Int] -> Splitter Serialized ByteString
+serializedValuesOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0)) mempty
     where
     step :: Pair AmIContinuing [Int] -> Serialized -> IO (SplitStepResult ByteString, Pair AmIContinuing [Int])
     step (Pair splitterState []) (Serialized pieces) = 
@@ -666,6 +666,9 @@ decodeUtf8 (Jet f) = Jet \stop step initial -> do
         let T.Some _ _ g = T.streamDecodeUtf8 B.empty
          in g
 
+encodeUtf8 :: Jet Text -> Jet ByteString
+encodeUtf8 = fmap T.encodeUtf8
+
 -- | A line of text.
 --
 -- While it is garanteed that the 'Line's coming out of the 'lines' function do
@@ -677,6 +680,7 @@ newtype Line = Line_ TL.Text
 -- https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/pattern_synonyms.html
 pattern Line text <- Line_ (TL.toStrict -> text)
 
+-- | Converts a 'Line' back to text, without adding the newline.
 lineToText :: Line -> Text
 lineToText (Line_ text) = TL.toStrict text
 
@@ -775,9 +779,12 @@ unlines j = do
     Line text <- j
     pure text <> pure (T.singleton '\n') 
 
--- | Converts a single 'Line' value to utf8, adding the final newline back.
+-- | Decodes each 'Line' in a 'Jet' to utf8, with the newlines re-added.
 -- 
--- @\j -> (j \<&\> encodeLineUtf8) >>= serializedBytes@ is equivalent to @\j -> j & unlines \<&\> encodeUtf8@
+-- @\\j -> unlinesUtf8 j >>= serializedBytes@ is equivalent to @encodeUtf8 . unlines@
+unlinesUtf8 :: Jet Line -> Jet Serialized
+unlinesUtf8 = fmap encodeLineUtf8
+
 encodeLineUtf8 :: Line -> Serialized
 encodeLineUtf8 (Line_ text) =
     let newlined = TL.append text (TL.singleton '\n')
@@ -859,7 +866,7 @@ instance JetSink Serialized [BoundedSize File] where
                (makeAllocator <$> bucketFiles)
                (\_ _ -> pure ())
                hClose
-               (\combiners -> drain $ recast (serializedOverBuckets bucketSizes) combiners j)
+               (\combiners -> drain $ recast (serializedValuesOverBuckets bucketSizes) combiners j)
       where
         bucketSizes = map (\(BoundedSize size _) -> size) bucketFiles
 
@@ -1037,7 +1044,7 @@ linesThroughProcess adaptConf procSpec = do
 -- | Like 'throughProcess', but feeding and reading 'Line's encoded in UTF8.
 utf8LinesThroughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
 utf8LinesThroughProcess adaptConf procSpec = do
-    lines . decodeUtf8 . throughProcess adaptConf procSpec . fmap T.encodeUtf8 . unlines
+    lines . decodeUtf8 . throughProcess adaptConf procSpec . encodeUtf8 . unlines
 
 throughProcess_ :: forall a b . ProcConf_ a b -> CreateProcess -> Jet a -> Jet b
 throughProcess_  procConf procSpec upstream = Jet \stop step initial -> do
@@ -1268,7 +1275,7 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
       pure final'
 
 -- | A 'Combiners' value knows how to process a sequence of groups, while
--- keeping a (existencially hidden) state for each group.
+-- keeping a (existentially hidden) state for each group.
 --
 -- Very much like a @FoldM IO@  from the
 -- [foldl](https://hackage.haskell.org/package/foldl-1.4.12/docs/Control-Foldl.html#t:FoldM)
@@ -1377,7 +1384,7 @@ instance Monoid (SplitStepResult b) where
 
 -- TODO: write the "allocator" of Combiners.
 --
--- TODO: encodeLinesUtf8 that creates a stream of SerializedEntity.
+-- TODO: unlinesUtf8 that creates a stream of SerializedEntity.
 -- and with that, perhaps remove the Utf8 newtype. It never made much sense.
 --
 

@@ -68,10 +68,11 @@ module Jet (
         J.serializedBytes,
         -- * Text and line utils
         J.decodeUtf8,
+        J.encodeUtf8,
         J.Line (Line),
         J.lines,
         J.unlines,
-        J.encodeLineUtf8,
+        J.unlinesUtf8,
         J.lineToText,
         J.textToLine,
         J.stringToLine,
@@ -109,7 +110,7 @@ module Jet (
         combiners,
         withCombiners,
         bytesOverBuckets,
-        serializedOverBuckets,
+        serializedValuesOverBuckets,
         -- * Re-exports
         -- $pipelines
         (&),
@@ -118,8 +119,6 @@ module Jet (
         stdin,
         stdout,
         stderr,
-        -- $text
-        T.encodeUtf8,
         -- $process
         proc,
         shell,
@@ -133,8 +132,6 @@ import Jet.Internal qualified as J
 
 import Data.Function ((&))
 import Data.Functor ((<&>))
-
-import Data.Text.Encoding qualified as T
 
 -- $zips
 --
@@ -160,6 +157,3 @@ import Data.Text.Encoding qualified as T
 -- Functions that create process specs for use with 'throughProcess'. For more control, import the whole of "System.Process".
 --
 
--- $text
--- Encoding functions.
---
