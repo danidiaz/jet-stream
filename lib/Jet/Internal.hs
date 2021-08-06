@@ -672,8 +672,7 @@ encodeUtf8 = fmap T.encodeUtf8
 -- | A line of text.
 --
 -- While it is garanteed that the 'Line's coming out of the 'lines' function do
--- not contain newlines, that invariant is not otherwise enforced in any other
--- way.
+-- not contain newlines, that invariant is not otherwise enforced. 
 newtype Line = Line_ TL.Text
     deriving newtype (Eq,Ord,Semigroup,Monoid,Show,IsString)
 
@@ -779,14 +778,11 @@ unlines j = do
     Line text <- j
     pure text <> pure (T.singleton '\n') 
 
--- | Decodes each 'Line' in a 'Jet' to utf8, with the newlines re-added.
--- 
--- @\\j -> unlinesUtf8 j >>= serializedBytes@ is equivalent to @encodeUtf8 . unlines@
-unlinesUtf8 :: Jet Line -> Jet Serialized
-unlinesUtf8 = fmap encodeLineUtf8
-
-encodeLineUtf8 :: Line -> Serialized
-encodeLineUtf8 (Line_ text) =
+-- | Decodes a 'Line' to utf8, also re-adding the final newline.
+--
+-- @\\j -> fmap lineAndNewlineToUtf8 j >>= serializedBytes@ is equivalent to @encodeUtf8 . unlines@
+lineAndNewlineToUtf8 :: Line -> Serialized
+lineAndNewlineToUtf8 (Line_ text) =
     let newlined = TL.append text (TL.singleton '\n')
         encoded = TL.encodeUtf8 newlined
      in Serialized encoded
