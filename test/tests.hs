@@ -80,7 +80,7 @@ assertBytesCorrectlySplit buckets inputs = do
     let concatenatedInput = mconcat inputs
         concatenatedOutput = mconcat groups
         allButLastGroups = Prelude.init groups
-    assertEqual "inputs and combined result same length" (B.length concatenatedInput) (B.length concatenatedOutput)
+    assertEqual "combined inputs and result" (T.decodeUtf8 concatenatedInput) (T.decodeUtf8 concatenatedOutput)
     pure ()
 
 main :: IO ()
