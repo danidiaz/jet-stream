@@ -74,8 +74,11 @@ import Data.Bifunctor (first)
 -- >>> :set -XTypeApplications
 -- >>> :set -XImportQualifiedPost
 -- >>> :set -XScopedTypeVariables
+-- >>> :set -XLambdaCase
 -- >>> import Jet qualified as J
 -- >>> import Control.Foldl qualified as L
+-- >>> import Control.Concurrent
+-- >>> import Data.IORef
 
 newtype Jet a = Jet {
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
@@ -175,7 +178,7 @@ instance MonadPlus Jet where
 instance MonadFail Jet where
   fail _ = mzero
 
--- | Produce a 'Jet' from any 'Foldable' container
+-- | Build a 'Jet' from any 'Foldable' container
 --
 -- >>> J.each [True,False] & J.toList
 -- [True,False]
@@ -253,9 +256,28 @@ iterate h = iterateIO (fmap pure h)
 iterateIO :: (a -> IO a) -> a -> Jet a
 iterateIO h a = pure a <> unfoldIO (fmap (fmap (\x -> Just (x,x))) h) a     
 
+-- |
+-- >>> J.unfold (\case [] -> Nothing ; c : cs -> Just (c,cs)) "abc" & J.toList
+-- "abc"
+--
 unfold :: (b -> Maybe (a, b)) -> b -> Jet a
 unfold h = unfoldIO (fmap pure h)
 
+-- |
+-- >>> :{ 
+-- J.unfoldIO (\x -> do putStrLn "hi" 
+--                      pure $ case x of 
+--                         [] -> Nothing 
+--                         c : cs -> Just (c,cs)) 
+--            "abc" 
+-- & J.toList
+-- :}                             
+-- hi
+-- hi
+-- hi
+-- hi
+-- "abc"
+--
 unfoldIO :: (b -> IO (Maybe (a, b))) -> b -> Jet a
 unfoldIO h seed = Jet \stop step ->
   let go b s =

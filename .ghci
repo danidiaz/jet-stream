@@ -4,6 +4,7 @@
 :set -XFlexibleInstances
 :set -XNumDecimals
 :set -XBlockArguments
+:set -XLambdaCase
 :set -fprint-explicit-foralls
 
 import Data.Function ((&))
