@@ -111,13 +111,10 @@ for_ j k = consume j (\() -> void <$> k) ()
 traverse :: (a -> IO b) -> Jet a -> Jet b
 traverse =  flip for
 
--- data ConcLevel = ConcLevel Int
--- traverseCo
-
-traverse_ :: (a -> IO b) -> Jet a -> IO ()
+traverse_ :: (a -> IO b) -> Sink a
 traverse_  = flip for_
 
-drain :: Jet a -> IO ()
+drain :: Sink a
 drain = traverse_ pure
 
 -- | Similar to the instance for pure lists, that generates combinations.

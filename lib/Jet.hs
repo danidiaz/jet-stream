@@ -5,12 +5,7 @@ module Jet (
         Jet,
         J.run,
         J.consume,
-        J.traverse,
-        J.traverse_,
-        J.for,
-        J.for_,
         J.drain,
-        defaults,
         -- J.flatMap,
         -- * Building Jets
         J.each,
@@ -27,6 +22,10 @@ module Jet (
         -- * List-like functions
         J.toList,
         J.length,
+        J.traverse,
+        J.traverse_,
+        J.for,
+        J.for_,
         J.filter,
         J.filterIO,
         J.take,
@@ -82,6 +81,7 @@ module Jet (
         -- * Concurrency
         traverseConcurrently,
         PoolConf,
+        defaults,
         inputQueueSize,
         numberOfWorkers,
         outputQueueSize,
