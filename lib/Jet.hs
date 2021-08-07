@@ -109,6 +109,7 @@ module Jet (
         Combiners,
         combiners,
         withCombiners,
+        withCombiners_,
         bytesOverBuckets,
         byteBundlesOverBuckets,
         -- * Re-exports

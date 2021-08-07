@@ -605,15 +605,15 @@ accumByteLengths = mapAccum (\acc bytes -> let acc' = acc + B.length bytes in (a
 data AmIContinuing = Continuing
                    | NotContinuing
 
--- | Splits a stream of bytes into groups of a certain size. When one group
--- fills up, the next one is started.
+-- | Splits a stream of bytes into groups bounded by maximum byte sizes. When
+-- one group \"fills up\", the next one is started.
 --
 -- When the list of buckets sizes is exhausted, all incoming bytes are put into
 -- the same unbounded group.
 --
 -- Useful in combination with 'recast'.
 bytesOverBuckets :: [Int] -> Splitter ByteString ByteString
-bytesOverBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) mempty
+bytesOverBuckets buckets = MealyIO step mempty (pure (Pair NotContinuing buckets))
     where
     step splitterState b = do
         let (continueResult, Pair continuing' buckets', b') = continue splitterState b
@@ -663,9 +663,9 @@ data BucketOverflow = BucketOverflow
 
 instance Exception BucketOverflow
 
--- | Splits a stream of 'ByteBundles' into groups of a certain size. When one
--- group fills up, the next one is started. Bytes belonging to the same
--- 'ByteBundle' always go into the same group.
+-- | Splits a stream of 'ByteBundles' into groups bounded by maximum byte
+-- sizes. When one group \"fills up\", the next one is started. Bytes belonging
+-- to the same 'ByteBundle' are always put in the same group.
 --
 -- When the list of buckets sizes is exhausted, all incoming bytes are put into
 -- the same unbounded group.
@@ -676,7 +676,7 @@ instance Exception BucketOverflow
 -- Useful in combination with 'recast'.
 --
 byteBundlesOverBuckets :: [Int] -> Splitter ByteBundle ByteString
-byteBundlesOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets0)) mempty
+byteBundlesOverBuckets buckets0 = MealyIO step mempty (pure (Pair NotContinuing buckets0))
     where
     step :: Pair AmIContinuing [Int] -> ByteBundle -> IO (SplitStepResult ByteString, Pair AmIContinuing [Int])
     step (Pair splitterState []) (ByteBundle pieces) = 
@@ -882,11 +882,10 @@ instance JetSink ByteBundle Handle where
 
 instance JetSink ByteString [BoundedSize File] where
     sink bucketFiles j = 
-        withCombiners 
-               (\handle () b -> B.hPut handle b)
-               (makeAllocator <$> bucketFiles)
-               (\_ _ -> pure ())
+        withCombiners_ 
+               (\handle b -> B.hPut handle b)
                hClose
+               (makeAllocator <$> bucketFiles)
                (\combiners -> drain $ recast (bytesOverBuckets bucketSizes) combiners j)
       where
         bucketSizes = map (\(BoundedSize size _) -> size) bucketFiles
@@ -896,19 +895,16 @@ instance JetSink ByteString [BoundedSize File] where
 -- 'BucketOverflow' exception is thrown.
 instance JetSink ByteBundle [BoundedSize File] where
     sink bucketFiles j = 
-        withCombiners 
-               (\handle () b -> B.hPut handle b)
-               (makeAllocator <$> bucketFiles)
-               (\_ _ -> pure ())
+        withCombiners_ 
+               (\handle b -> B.hPut handle b)
                hClose
+               (makeAllocator <$> bucketFiles)
                (\combiners -> drain $ recast (byteBundlesOverBuckets bucketSizes) combiners j)
       where
         bucketSizes = map (\(BoundedSize size _) -> size) bucketFiles
 
-makeAllocator :: BoundedSize File -> (IO Handle, Handle -> IO ())
-makeAllocator (BoundedSize _ (File path)) = 
-    ( openBinaryFile path WriteMode
-    , \_ -> pure ())
+makeAllocator :: BoundedSize File -> IO Handle
+makeAllocator (BoundedSize _ (File path)) = openBinaryFile path WriteMode
 
 -- DList helper
 newtype DList a = DList { runDList :: [a] -> [a] }
@@ -1214,8 +1210,8 @@ data RecastState foldState = RecastState !(AreWeInsideGroup foldState) [IO foldS
 -- If the list of combiners is finite and becomes exhausted, we stop splitting
 -- and the return 'Jet' stops.
 recast :: forall a b c . Splitter a b -> Combiners b c -> Jet a -> Jet c
-recast (MealyIO splitterStep splitterAlloc splitterCoda) 
-       (Combiners foldStep foldAllocs0 foldCoda) 
+recast (MealyIO splitterStep splitterCoda splitterAlloc) 
+       (Combiners foldStep foldCoda foldAllocs0) 
        (Jet upstream) = Jet \stop step initial -> do
   initialSplitterState <- splitterAlloc
   let -- When to stop? Either downstream says we need to stop,
@@ -1318,29 +1314,44 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
 --
 -- For converting one into the other, this function should do the trick:
 --
--- > \(L.FoldM step allocator coda) -> combiners step (Prelude.repeat allocator) coda
+-- > \(L.FoldM step allocator coda) -> combiners step coda (Prelude.repeat allocator)
 data Combiners a b where 
-    Combiners :: (s -> a -> IO s) -> [IO s] -> (s -> IO b) -> Combiners a b
+    Combiners :: (s -> a -> IO s) -> (s -> IO b) -> [IO s] -> Combiners a b
 
 deriving stock instance Functor (Combiners a)
 
 -- | Constructor for 'Combiners' values.
-combiners 
-    :: (s -> a -> IO s) -- ^ Step function that threads the state @s@.
-    -> [IO s] -- ^ Actions that produce the initial states @s@ for processing each group.
+combiners :: forall s a b r -- ^ foo
+     . (s -> a -> IO s) -- ^ Step function that threads the state @s@.
     -> (s -> IO b) -- ^ Coda invoked when a group closes.
+    -> [IO s] -- ^ Actions that produce the initial states @s@ for processing each group.
     -> Combiners a b
 combiners = Combiners
+
+-- | A simpler version of 'withCombiners' that doen't thread a state.
+withCombiners_ :: forall h a r 
+     . (h -> a -> IO ()) -- ^ Step function that accesses the resource @h@.
+    -> (h -> IO ()) -- ^ Finalizer to run after closing each group, and also in the case of an exception. 
+    -> [IO h] -- ^ Actions that allocate a sequence of resources @h@.
+    -> (Combiners a () -> IO r) -- ^ The 'Combiners' value should be consumed linearly.
+    -> IO r 
+withCombiners_ step finalize allocators = do
+    withCombiners 
+        (\h () a -> step h a)
+        (\_ () -> pure ())
+        finalize
+        (do allocator <- allocators
+            pure (allocator, \_ -> pure ()))
 
 withCombiners 
     :: forall h s a b r .
        (h -> s -> a -> IO s) -- ^ Step function that accesses the resource @h@ and threads the state @s@.
-    -> [(IO h, h -> IO s)] -- ^ Actions that allocate resources @h@ and produce initial states @s@ for processing each group.
     -> (h -> s -> IO b) -- ^ Coda invoked when a group closes.
     -> (h -> IO ()) -- ^ Finalizer to run after each coda, and also in the case of an exception. 
+    -> [(IO h, h -> IO s)] -- ^ Actions that allocate a sequence of resources @h@ and produce initial states @s@ for processing each group.
     -> (Combiners a b -> IO r) -- ^ The 'Combiners' value should be consumed linearly.
     -> IO r 
-withCombiners step allocators coda finalize continuation = do
+withCombiners step coda finalize allocators continuation = do
     resourceRef <- newEmptyMVar @h
     let  
         step' (Pair h s) a = do
@@ -1364,7 +1375,7 @@ withCombiners step allocators coda finalize continuation = do
             -- this always succeeds, we store the resource at the beginning!
             mask_ tryFinalize
             pure b
-    r <- (continuation (combiners step' (adaptAllocator <$> allocators) coda'))
+    r <- (continuation (combiners step' coda' (adaptAllocator <$> allocators)))
          `Control.Exception.finally`
          tryFinalize
     pure r
@@ -1381,8 +1392,8 @@ type Splitter a b = MealyIO a (SplitStepResult b)
 -- library, but it emits an output at each step, not only at the end.
 data MealyIO a b where
     MealyIO :: (s -> a -> IO (b,s)) -- ^ The step function which threads the state.
-            -> IO s -- ^ An action that produces the initial state.
             -> (s -> IO b) -- ^ The final output, produced from the final state.
+            -> IO s -- ^ An action that produces the initial state.
             -> MealyIO a b
 
 deriving stock instance Functor (MealyIO a)
