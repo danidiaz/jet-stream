@@ -122,6 +122,7 @@ traverse =  flip for
 traverse_ :: (a -> IO b) -> Sink a
 traverse_  = flip for_
 
+-- | Go through the 'Jet' only for the 'IO' effects, discarding all yielded elements.
 drain :: Sink a
 drain = traverse_ pure
 
