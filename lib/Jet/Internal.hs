@@ -73,6 +73,7 @@ import Data.Bifunctor (first)
 --
 -- >>> :set -XTypeApplications
 -- >>> :set -XImportQualifiedPost
+-- >>> :set -XScopedTypeVariables
 -- >>> import Jet qualified as J
 -- >>> import Control.Foldl qualified as L
 
@@ -239,14 +240,20 @@ replicateIO n ioa = take n (repeatIO ioa)
 
 -- |
 --
--- >>> J.iterate succ (1 :: Int) & take 2 & J.toList
+-- >>> J.iterate succ (1 :: Int) & J.take 2 & J.toList
 -- [1,2]
 --
 iterate :: (a -> a) -> a -> Jet a
 iterate h = iterateIO (fmap pure h)
 
+-- |
+--
+-- >>> J.iterateIO (\x -> putStrLn "hi" *> pure (succ x)) (1 :: Int) & J.take 2 & J.toList
+-- hi
+-- [1,2]
+--
 iterateIO :: (a -> IO a) -> a -> Jet a
-iterateIO h a = unfoldIO (fmap (fmap (\x -> Just (x,x))) h) a     
+iterateIO h a = pure a <> unfoldIO (fmap (fmap (\x -> Just (x,x))) h) a     
 
 unfold :: (b -> Maybe (a, b)) -> b -> Jet a
 unfold h = unfoldIO (fmap pure h)
@@ -263,7 +270,7 @@ unfoldIO h seed = Jet \stop step ->
                 Nothing ->
                   pure s
                 -- strictness only on the states. Good idea, or bad?
-                Just !(a, !b') -> do
+                Just (a, !b') -> do
                   !s' <- step s a
                   go b' s'
    in go seed
