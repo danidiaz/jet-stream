@@ -117,10 +117,7 @@ traverse_  = flip for_
 drain :: Jet a -> IO ()
 drain = traverse_ pure
 
--- -- | Synonym for '(=<<)'. Might be occasionally useful when building pipelines with '(&)'.
--- flatMap :: (a -> Jet b) -> Jet a -> Jet b
--- flatMap = (=<<)
-
+-- | Similar to the instance for pure lists, that generates combinations.
 instance Applicative Jet where
   pure i = Jet \stop step initial ->
     if
@@ -131,6 +128,7 @@ instance Applicative Jet where
     let step' f s a = step s (f a)
      in left stop (\s f -> right stop (step' f) s) initial
 
+-- | Similar to the instance for pure lists, that does search.
 instance Monad Jet where
   return = pure
   Jet m >>= k = Jet \stop step initial ->
@@ -144,7 +142,7 @@ instance MonadIO Jet where
           a <- action
           step initial a
 
--- 'Jet' concatenation.
+-- | 'Jet' concatenation.
 instance Semigroup (Jet a) where
   Jet f1 <> Jet f2 = Jet \stop step s0 -> do
     -- perhaps some of the stop checks are redundant, the first one in particular?
@@ -160,16 +158,16 @@ instance Semigroup (Jet a) where
                 !s2 <- f2 stop step s1
                 pure s2
 
--- 'mempty' is the empty 'Jet'.
+-- | 'mempty' is the empty 'Jet'.
 instance Monoid (Jet a) where
   mempty = Jet \_ _ initial -> pure initial
 
--- Same as 'Monoid'.
+-- | Same as 'Monoid'.
 instance Alternative Jet where
   (<|>) = (<>)
   empty = mempty
 
--- Same as 'Monoid'
+-- | Same as 'Monoid'
 instance MonadPlus Jet where
   mzero = mempty
   mplus = (<>)
@@ -1318,7 +1316,7 @@ withCombiners
     -> [(IO h, h -> IO s)] -- ^ Actions that allocate resources @h@ and produce initial states @s@ for processing each group.
     -> (h -> s -> IO b) -- ^ Coda invoked when a group closes.
     -> (h -> IO ()) -- ^ Finalizer to run after each coda, and also in the case of an exception. 
-    -> (Combiners a b -> IO r) -- ^ Linear continuation to prevent double-use of the combiners.
+    -> (Combiners a b -> IO r) -- ^ The 'Combiners' value should be consumed linearly.
     -> IO r 
 withCombiners step allocators coda finalize continuation = do
     resourceRef <- newEmptyMVar @h
@@ -1396,6 +1394,5 @@ instance Semigroup (SplitStepResult b) where
 instance Monoid (SplitStepResult b) where
     mempty = SplitStepResult [] [] []
 
---
--- TODO:  rethink the linear types in withCombiners. Maybe I need something like unrestricted?
+-- TODO: bring back some linear stuff? Perhaps adding a linearFmap ?
 --
