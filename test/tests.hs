@@ -51,14 +51,13 @@ tests =
     "All"
     [
         testGroup "byteSplitter" $
-            let combinations = do
+            let tests = do
                     splitSize <- [1..7]
                     bucketSize <- [1..10]
-                    pure (splitSize, bucketSize)
-                makeTest (splitSize, bucketSize) = 
-                    testCase ("splitter splitSize=" ++ show splitSize ++ " bucketSize=" ++ show bucketSize) $ 
-                        assertBytesCorrectlySplit (Prelude.repeat bucketSize) (bytePieces splitSize az)
-             in makeTest <$> combinations 
+                    pure $ 
+                        testCase ("splitter splitSize=" ++ show splitSize ++ " bucketSize=" ++ show bucketSize) $ 
+                            assertBytesCorrectlySplit (Prelude.repeat bucketSize) (bytePieces splitSize az)
+             in tests
     ]
 
 az :: ByteString
