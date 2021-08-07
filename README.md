@@ -26,8 +26,9 @@ In order to achieve those objectives, the following sacrifices have been made:
   like you can do for example in
   [streaming](https://hackage.haskell.org/package/streaming-0.2.3.0/docs/Streaming-Prelude.html#v:next).
 
-- Grouping and splitting operations are cumbersome and underpowered, especially
-  compared to libraries like
+- There's `take` and `drop`, but not at proper `splitAt`. Also, grouping
+  operations are cumbersome and underpowered, especially compared to libraries
+  like
   [streaming]((https://hackage.haskell.org/package/streaming-0.2.3.0/docs/Streaming-Prelude.html#v:next))
   or
   [streaming-bytestring](https://hackage.haskell.org/package/streaming-bytestring).

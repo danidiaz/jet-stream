@@ -641,9 +641,9 @@ bytesOverBuckets buckets = MealyIO step (pure (Pair NotContinuing buckets)) memp
                 EQ -> (entireWith (acc <> singleton b), Pair NotContinuing buckets)
                 GT -> let (left,right) = B.splitAt bucket b
                        in entires (acc <> singleton left) right buckets -- non-terminal
-    continueWith b = mempty { extensionOfPreviousGroup = [b] }
+    continueWith b = mempty { continuationOfPreviouslyStartedGroup = [b] }
     entireWith bdf = mempty { entireGroups = fmap pure (closeDList bdf) }
-    nextWith b = mempty { beginningOfNewGroup = [b] }
+    nextWith b = mempty { startOfNewGroup = [b] }
 
 -- | A sequence of bytes that we might want to keep together.
 newtype ByteBundle = ByteBundle BL.ByteString deriving newtype (Show, Semigroup, Monoid)
@@ -702,9 +702,9 @@ byteBundlesOverBuckets buckets0 = MealyIO step (pure (Pair NotContinuing buckets
                 -- If we are not continuing, that means that the brand-new bucket hasn't 
                 -- enough space to hold a single entity. 
                 NotContinuing -> throwIO BucketOverflow
-    continueWith bs = mempty { extensionOfPreviousGroup = BL.toChunks bs }
+    continueWith bs = mempty { continuationOfPreviouslyStartedGroup = BL.toChunks bs }
     entireWith pieces = mempty { entireGroups = [BL.toChunks pieces] }
-    nextWith bs = mempty { beginningOfNewGroup = BL.toChunks bs }
+    nextWith bs = mempty { startOfNewGroup = BL.toChunks bs }
 
 -- | Uses the default system locale.
 instance JetSource Line Handle where
@@ -1227,21 +1227,21 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
         (splitResult,  splitterState') <- splitterStep splitterState a 
         Pair recastState' s' <- advanceRecast splitResult recastState s 
         pure (Triple splitterState' recastState' s')
-      advanceRecast ssr@(SplitStepResult {extensionOfPreviousGroup, entireGroups, beginningOfNewGroup}) (RecastState areWeInside foldAllocs) s = do
-        case (areWeInside, entireGroups, beginningOfNewGroup) of
+      advanceRecast ssr@(SplitStepResult {continuationOfPreviouslyStartedGroup, entireGroups, startOfNewGroup}) (RecastState areWeInside foldAllocs) s = do
+        case (areWeInside, entireGroups, startOfNewGroup) of
             -- If there aren't any new groups and we don't start an incomplete one, just advance the current fold
             (InsideGroup foldState, [], []) -> do          
-                foldState' <- advanceGroupWithougClosing foldState extensionOfPreviousGroup
+                foldState' <- advanceGroupWithougClosing foldState continuationOfPreviouslyStartedGroup
                 pure (Pair (RecastState (InsideGroup foldState') foldAllocs) s) -- main state didn't change
             (InsideGroup foldState,  _, _) -> do          
-                !c <- processSingleGroup foldState extensionOfPreviousGroup 
+                !c <- processSingleGroup foldState continuationOfPreviouslyStartedGroup 
                 !s' <- step s c
                 if 
                     | stop s' -> do
                         pure (Pair (RecastState OutsideGroup foldAllocs) s')
                     | otherwise -> do
                         advanceRecast ssr (RecastState OutsideGroup foldAllocs) s'
-            -- if we are outside of a group, the "extensionOfPreviousGroup" is ignored.
+            -- if we are outside of a group, the "continuationOfPreviouslyStartedGroup" is ignored.
             (OutsideGroup, _, _) -> do
                 -- doens't return foldState becasue we close the groups
                 Pair foldAllocs' s' <- processEntireGroups foldAllocs s entireGroups 
@@ -1250,7 +1250,7 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
                     | stop s' -> do
                       pure bail
                     | otherwise -> do
-                        case beginningOfNewGroup of
+                        case startOfNewGroup of
                             [] -> do
                               pure bail
                             (_ : _) -> do
@@ -1260,7 +1260,7 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
                                     alloc : allocs -> do
                                         -- there is a next group, so let's begin it
                                         !foldState0 <- alloc
-                                        foldState <- processBeginNextGroup foldState0 beginningOfNewGroup
+                                        foldState <- processBeginNextGroup foldState0 startOfNewGroup
                                         pure (Pair (RecastState (InsideGroup foldState) allocs) s')
       -- foldM ?
       advanceGroupWithougClosing :: _ -> [b] -> IO _
@@ -1306,7 +1306,7 @@ recast (MealyIO splitterStep splitterAlloc splitterCoda)
     | otherwise -> do
       splitResult <- splitterCoda splitterState
       -- We discard the "begins next group"; it doesn't make sense in this final step.
-      Pair _ final' <- advanceRecast (splitResult { beginningOfNewGroup = [] }) recastState final
+      Pair _ final' <- advanceRecast (splitResult { startOfNewGroup = [] }) recastState final
       pure final'
 
 -- | A 'Combiners' value knows how to process a sequence of groups, while
@@ -1399,13 +1399,13 @@ data SplitStepResult b = SplitStepResult {
      -- an entire group or we begin a new group.
      --
      -- __INVARIANT__: we should only continue a group if we have already
-     -- opened a \"next one\" with one or more elements in an earlier step.
-     extensionOfPreviousGroup :: [b],
+     -- opened a \"new one\" with one or more elements in an earlier step.
+     continuationOfPreviouslyStartedGroup :: [b],
      -- | It's ok if the groups we find are empty.
      entireGroups :: [[b]],
      -- | __INVARIANT__: when we are in the final step, we should not yield elements
-     -- for the beginning of a "\next one\".
-     beginningOfNewGroup :: [b]
+     -- for the beginning of a new one.
+     startOfNewGroup :: [b]
   }
   deriving Functor
 
