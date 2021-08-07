@@ -106,12 +106,13 @@ module Jet (
         Splitter (..),
         MealyIO(..),
         SplitStepResult(..),
+        bytesOverBuckets,
+        byteBundlesOverBuckets,
         Combiners,
         combiners,
         withCombiners,
         withCombiners_,
-        bytesOverBuckets,
-        byteBundlesOverBuckets,
+        combineIntoLists,
         -- * Re-exports
         -- $pipelines
         (&),

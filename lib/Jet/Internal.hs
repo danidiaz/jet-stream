@@ -292,6 +292,9 @@ unfoldIO h seed = Jet \stop step ->
                   go b' s'
    in go seed
 
+-- |
+-- >>> j = J.untilEOF System.IO.hIsEOF System.IO.hGetLine :: Handle -> Jet String
+--
 untilEOF :: (handle -> IO Bool) -> (handle -> IO a) -> handle -> Jet a
 untilEOF hIsEOF' hGetLine' handle = untilNothing do
       eof <- hIsEOF' handle
@@ -301,6 +304,16 @@ untilEOF hIsEOF' hGetLine' handle = untilNothing do
           | otherwise ->
             Just <$> hGetLine' handle
 
+-- | 
+--
+-- >>> :{ 
+-- do ref <- newIORef "abc"
+--    let pop = atomicModifyIORef ref (\case [] -> ([], Nothing)
+--                                           x : xs -> (xs, Just x)) 
+--    J.untilNothing pop & J.toList                                       
+-- :}
+-- "abc"
+--
 untilNothing :: IO (Maybe a) -> Jet a
 untilNothing action = unfoldIO (\() -> fmap (fmap (,())) action) ()
 
@@ -661,8 +674,8 @@ data BucketOverflow = BucketOverflow
 instance Exception BucketOverflow
 
 -- | Splits a stream of 'ByteBundles' into groups bounded by maximum byte
--- sizes. When one group \"fills up\", the next one is started. Bytes belonging
--- to the same 'ByteBundle' are always put in the same group.
+-- sizes.  Bytes belonging to the same 'ByteBundle' are always put in the same
+-- group. When one group \"fills up\", the next one is started.
 --
 -- When the list of buckets sizes is exhausted, all incoming bytes are put into
 -- the same unbounded group.
@@ -848,6 +861,7 @@ downstream stop step = go
 
 -- General sinks
 
+-- | A function that consumes a 'Jet' totally or partially, without returning a result.
 type Sink a = Jet a -> IO ()
 
 class JetSink a target where
@@ -1376,6 +1390,12 @@ withCombiners step coda finalize allocators continuation = do
          `Control.Exception.finally`
          tryFinalize
     pure r
+
+combineIntoLists :: Combiners a [a]
+combineIntoLists = combiners
+    (\s a -> pure (s <> singleton a))
+    (pure . closeDList)
+    (Prelude.repeat (pure mempty))
 
 -- | Delimits groups in the values yielded by a 'Jet', and can also transform
 -- those values.
