@@ -121,10 +121,14 @@ module Jet (
         stdin,
         stdout,
         stderr,
+        -- $exceptions 
+        T.UnicodeException,
         -- $process
         proc,
         shell,
     ) where
+
+import Data.Text.Encoding.Error qualified as T
 
 import System.IO (stdin, stdout, stderr)
 import System.Process
@@ -154,6 +158,11 @@ import Data.Functor ((<&>))
 -- $standardstreams
 -- The standard streams, useful with functions like 'sink'.
 --
+
+-- $exceptions
+-- Thrown when decoding UTF8.
+--
+
 
 -- $process
 -- Functions that create process specs for use with 'throughProcess'. For more control, import the whole of "System.Process".

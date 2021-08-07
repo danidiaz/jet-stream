@@ -319,11 +319,15 @@ untilNothing action = unfoldIO (\() -> fmap (fmap (,())) action) ()
 
 -- | Convert to a regular list. This breaks streaming.
 --
--- Equivalent to 
+-- >>> J.each "abc" & J.toList
+-- "abc"
 --
--- > Control.Foldl.purely Jet.fold Control.Foldl.list
+-- Alternatively, we can use 'fold' in combination with "Control.Foldl.list" form the \"foldl\" package:
 --
--- which is more composable.
+-- >>> L.purely (J.fold (J.each "abc")) L.list 
+-- "abc"
+--
+-- which is more verbose, but more composable.
 toList :: Jet a -> IO [a]
 toList (Jet f) = do
     as <- f (const False) (\xs x -> pure (x : xs)) []
@@ -331,11 +335,15 @@ toList (Jet f) = do
 
 -- | Returns the number of elements yielded by the 'Jet'.
 --
--- Equivalent to 
+-- >>> J.each "abc" & J.length
+-- 3
 --
--- > Control.Foldl.purely Jet.fold Control.Foldl.length
+-- Alternatively, we can use 'fold' in combination with "Control.Foldl.length" form the \"foldl\" package:
 --
--- which is more composable.
+-- >>> L.purely (J.fold (J.each "abc")) L.length
+-- 3
+--
+-- which is more verbose, but more composable.
 length :: Jet a -> IO Int
 length (Jet f) = do
     l <- f (const False) (\s _ -> pure (succ s)) 0
@@ -725,6 +733,7 @@ instance JetSource Line Handle where
 --
 -- Text Jets
 
+-- | __BEWARE__: Might throw 'T.UnicodeException'.
 decodeUtf8 :: Jet ByteString -> Jet Text
 decodeUtf8 (Jet f) = Jet \stop step initial -> do
     let stop' = stop . pairExtract
