@@ -565,13 +565,26 @@ bracketOnError allocate free = control @a (unsafeCoerceControl @a (Control.Excep
 --
 -- Notice how the finalizer runs even when we limit the 'Jet':
 --
--- >>> J.finally (putStrLn "hi") *> J.each "abc" & J.limit 2 & J.toList
+-- >>> :{ 
+-- do J.finally (putStrLn "hi") -- protects statements below
+--    liftIO (putStrLn "hey")
+--    J.each "abc" 
+-- & J.limit 2 
+-- & J.toList
+-- :}
+-- hey
 -- hi
 -- "ab"
 --
 -- But if the protected 'Jet' is not consumed at all, the finalizer might not run.
 --
--- >>> J.finally (putStrLn "hi") *> J.each "abc" & J.limit 0 & J.toList
+-- >>> :{ 
+-- do J.finally (putStrLn "hi") -- protects statements below 
+--    liftIO (putStrLn "hey") 
+--    J.each "abc" 
+-- & J.limit 0 
+-- & J.toList
+-- :}
 -- ""
 --
 finally :: IO a -> Jet ()
@@ -617,11 +630,23 @@ unsafeCoerceControl f = Unsafe.Coerce.unsafeCoerce f
 unsafeCoerceControl_ :: (forall x. IO x -> IO x) -> (forall x. IO x %1 -> IO x)
 unsafeCoerceControl_ f = Unsafe.Coerce.unsafeCoerce f
 
+-- | 
+--
+-- >>> L.purely (J.fold (J.each "abc")) ((,) <$> L.list <*> L.length)
+-- ("abc",3)
+--
 fold :: Jet a -> (s -> a -> s) -> s -> (s -> r) -> IO r
 fold (Jet f) step initial coda = do
   r <- f (const False) (fmap (fmap pure) step) initial
   pure $ coda r
 
+-- |
+-- >>> L.impurely (J.foldIO (J.each "abc")) (L.FoldM (\() c -> putStrLn [c]) (pure ()) pure *> L.generalize L.length)
+-- a
+-- b
+-- c
+-- 3
+--
 foldIO :: Jet a -> (s -> a -> IO s) -> IO s -> (s -> IO r) -> IO r
 foldIO (Jet f) step initialIO coda = do
   initial <- initialIO

@@ -177,7 +177,7 @@ import Data.Functor ((<&>))
 -- functions like @Control.Foldl.purely@ and @Control.Foldl.impurely@.
 --
 -- @Applicative@ folds are useful because they let you run multiple
--- \"analyses\" of a 'Jet' while goint through it once.
+-- \"analyses\" of a 'Jet' while going through it only once.
 
 
 -- $doityourself
