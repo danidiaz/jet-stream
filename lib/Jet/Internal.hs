@@ -143,6 +143,7 @@ instance MonadIO Jet where
           a <- action
           step initial a
 
+-- 'Jet' concatenation.
 instance Semigroup (Jet a) where
   Jet f1 <> Jet f2 = Jet \stop step s0 -> do
     -- perhaps some of the stop checks are redundant, the first one in particular?
@@ -158,13 +159,16 @@ instance Semigroup (Jet a) where
                 !s2 <- f2 stop step s1
                 pure s2
 
+-- 'mempty' is the empty 'Jet'.
 instance Monoid (Jet a) where
   mempty = Jet \_ _ initial -> pure initial
 
+-- Same as 'Monoid'.
 instance Alternative Jet where
   (<|>) = (<>)
   empty = mempty
 
+-- Same as 'Monoid'
 instance MonadPlus Jet where
   mzero = mempty
   mplus = (<>)
@@ -196,29 +200,48 @@ each (Data.Foldable.toList -> seed) = Jet \stop step ->
 
 -- |
 --
--- >>> J.repeat True & take 2 & J.toList
+-- >>> J.repeat True & J.take 2 & J.toList
 -- [True,True]
 --
 repeat :: a -> Jet a
 repeat a = repeatIO (pure a)
 
 
--- TODO: bug in repeat below?
-
 -- |
 --
--- >>> J.repeat (putStrLn "hi" *> pure True) & J.take 2 & J.toList
---
+-- >>> J.repeatIO (putStrLn "hi" *> pure True) & J.take 2 & J.toList
+-- hi
+-- hi
+-- [True,True]
 --
 repeatIO :: IO a -> Jet a
 repeatIO action = untilNothing (fmap Just action)
 
+-- |
+--
+-- >>> J.replicate 2 True & J.toList
+-- [True,True]
+--
 replicate :: Int -> a -> Jet a
 replicate n a = replicateIO n (pure a)
 
+-- |
+--
+-- >>> J.replicateIO 2 (putStrLn "hi" *> pure True) & J.toList
+-- hi
+-- hi
+-- [True,True]
+--
 replicateIO :: Int -> IO a -> Jet a
 replicateIO n ioa = take n (repeatIO ioa)
 
+-- TODO: bug in iterate!
+
+-- |
+--
+-- >>> J.iterate succ (1 :: Int) & take 2 & J.toList
+-- [1,2]
+--
 iterate :: (a -> a) -> a -> Jet a
 iterate h = iterateIO (fmap pure h)
 
