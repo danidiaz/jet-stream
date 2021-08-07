@@ -75,11 +75,19 @@ import Data.Bifunctor (first)
 -- >>> :set -XImportQualifiedPost
 -- >>> :set -XScopedTypeVariables
 -- >>> :set -XLambdaCase
+-- >>> import Jet (Jet, (&))
 -- >>> import Jet qualified as J
 -- >>> import Control.Foldl qualified as L
 -- >>> import Control.Concurrent
 -- >>> import Data.IORef
+-- >>> import Data.Text qualified as T
 
+-- | A 'Jet' is a sequence of values produced through 'IO' effects.
+--
+-- It allows consuming the elements as they are produced and doesn't force them
+-- to be present in memory all at the same time, unlike functions like
+-- 'Control.Monad.replicateM' from @base@.
+-- 
 newtype Jet a = Jet {
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
     } deriving (Functor)
@@ -322,7 +330,7 @@ untilNothing action = unfoldIO (\() -> fmap (fmap (,())) action) ()
 -- >>> J.each "abc" & J.toList
 -- "abc"
 --
--- Alternatively, we can use 'fold' in combination with "Control.Foldl.list" form the \"foldl\" package:
+-- Alternatively, we can use 'fold' in combination with 'Control.Foldl.list' form the [foldl](https://hackage.haskell.org/package/foldl) library:
 --
 -- >>> L.purely (J.fold (J.each "abc")) L.list 
 -- "abc"
@@ -338,7 +346,7 @@ toList (Jet f) = do
 -- >>> J.each "abc" & J.length
 -- 3
 --
--- Alternatively, we can use 'fold' in combination with "Control.Foldl.length" form the \"foldl\" package:
+-- Alternatively, we can use 'fold' in combination with 'Control.Foldl.length' form the [foldl](https://hackage.haskell.org/package/foldl) library:
 --
 -- >>> L.purely (J.fold (J.each "abc")) L.length
 -- 3
@@ -519,18 +527,53 @@ zipWithIO zf (Data.Foldable.toList -> ioas0) (Jet f) = Jet \stop step initial ->
   pure final
 
 
-withFile :: FilePath -> Jet Handle
-withFile path = control @Handle (unsafeCoerceControl @Handle (System.IO.withFile path System.IO.ReadMode))
+-- | Opens a file and makes the 'Handle' available to all following statements
+-- in the do-block.
+--
+-- Notice that it's often simpler to use the convenience 'JetSource' (for
+-- reading) and 'JetSink' (for writing) instances of 'File'.
+withFile :: FilePath -> IOMode -> Jet Handle
+withFile path iomode = control @Handle (unsafeCoerceControl @Handle (System.IO.withFile path iomode))
 
-bracket :: forall a b . IO a -> (a -> IO b) -> Jet a
+-- |
+--
+-- >>> :{
+-- do r <- J.bracket (putStrLn "allocating" *> pure "foo") (\r -> putStrLn $ "deallocating " ++ r)
+--    liftIO $ putStrLn $ "using resource " ++ r
+-- & drain
+-- :}
+-- allocating
+-- using resource foo
+-- deallocating foo
+--
+bracket :: forall a b . IO a -- ^ allocator
+        -> (a -> IO b) -- ^ finalizer
+        -> Jet a
 bracket allocate free = control @a (unsafeCoerceControl @a (Control.Exception.bracket allocate free))
 
-bracket_ :: forall a b . IO a -> IO b -> Jet ()
+bracket_ :: forall a b . IO a -- ^ allocator
+         -> IO b -- ^ finalizer 
+         -> Jet ()
 bracket_ allocate free = control_ (unsafeCoerceControl_ (Control.Exception.bracket_ allocate free))
 
-bracketOnError :: forall a b . IO a -> (a -> IO b) -> Jet a
+bracketOnError :: forall a b . IO a -- ^ allocator
+               -> (a -> IO b) -- ^ finalizer
+               -> Jet a
 bracketOnError allocate free = control @a (unsafeCoerceControl @a (Control.Exception.bracketOnError allocate free))
 
+-- | 
+--
+-- Notice how the finalizer runs even when we limit the 'Jet':
+--
+-- >>> J.finally (putStrLn "hi") *> J.each "abc" & J.limit 2 & J.toList
+-- hi
+-- "ab"
+--
+-- But if the protected 'Jet' is not consumed at all, the finalizer might not run.
+--
+-- >>> J.finally (putStrLn "hi") *> J.each "abc" & J.limit 0 & J.toList
+-- ""
+--
 finally :: IO a -> Jet ()
 finally afterward =
     control_ (unsafeCoerceControl_ (flip Control.Exception.finally afterward))
@@ -539,6 +582,8 @@ onException :: IO a -> Jet ()
 onException afterward =
     control_ (unsafeCoerceControl_ (flip Control.Exception.onException afterward))
 
+-- | Lift a control operation (like 'Control.Exception.bracket') for which the
+-- callback uses the allocated resource.
 control :: forall resource. (forall x. (resource -> IO x) %1 -> IO x) -> Jet resource
 control f =
   Jet \stop step initial ->
@@ -548,6 +593,8 @@ control f =
         | otherwise -> do
           f (step initial)
 
+-- | Lift a control operation (like 'Control.Exception.finally') for which the
+-- callback doesn't use the allocated resource.
 control_ :: (forall x. IO x %1-> IO x) -> Jet ()
 control_ f =
   Jet \stop step initial ->
@@ -557,9 +604,16 @@ control_ f =
         | otherwise -> do
           f (step initial ())
 
+-- | \"morally\", all control operations compatible with this library should
+-- execute the callback only once, which means that they should have a linear
+-- type. But because linear types are not widespread, they usually are given a
+-- less precise non-linear type. If you know what you are doing, use this
+-- function to give them a linear type.
 unsafeCoerceControl :: forall resource . (forall x. (resource -> IO x) -> IO x) -> (forall x. (resource -> IO x) %1 -> IO x)
 unsafeCoerceControl f = Unsafe.Coerce.unsafeCoerce f
 
+-- | Line 'unsafeCoerceControl', for when the callback doesn't use the
+-- allocated resource.
 unsafeCoerceControl_ :: (forall x. IO x -> IO x) -> (forall x. IO x %1 -> IO x)
 unsafeCoerceControl_ f = Unsafe.Coerce.unsafeCoerce f
 
@@ -614,7 +668,7 @@ instance JetSource ByteString Handle where
 
 instance JetSource a Handle => JetSource a File where
     jet (File path) = do
-        handle <- withFile path 
+        handle <- withFile path ReadMode
         jet handle
 
 accumByteLengths :: Jet ByteString -> Jet (Int,ByteString)
@@ -758,8 +812,8 @@ encodeUtf8 = fmap T.encodeUtf8
 
 -- | A line of text.
 --
--- While it is garanteed that the 'Line's coming out of the 'lines' function do
--- not contain newlines, that invariant is not otherwise enforced. 
+-- While it is guaranteed that the 'Line's coming out of the 'lines' function
+-- do not contain newlines, that invariant is not otherwise enforced. 
 newtype Line = Line_ TL.Text
     deriving newtype (Eq,Ord,Semigroup,Monoid,Show,IsString)
 
@@ -883,7 +937,7 @@ instance JetSink a Handle => JetSink a File where
     sink (File path) j = System.IO.withFile path System.IO.WriteMode \handle ->
         sink handle j
 
--- | Uses the default system locale.
+-- | Uses the default system locale. Adds newlines.
 instance JetSink Line Handle where
     sink handle = traverse_ (T.hPutStrLn handle . lineToText)
 
@@ -900,6 +954,8 @@ instance JetSink ByteBundle Handle where
         s <- j
         bundleBytes s
 
+-- | Distributes incoming bytes through a sequence of files. Once a file is
+-- full, we start writing the next one.
 instance JetSink ByteString [BoundedSize File] where
     sink bucketFiles j = 
         withCombiners_ 
@@ -910,7 +966,10 @@ instance JetSink ByteString [BoundedSize File] where
       where
         bucketSizes = map (\(BoundedSize size _) -> size) bucketFiles
 
--- | Each 'ByteBundle' value is garanteed to be written to a single file. If a
+-- | Distributes incoming bytes through a sequence of files. Once a file is
+-- full, we start writing the next one.
+--
+-- Each 'ByteBundle' value is garanteed to be written to a single file. If a
 -- file turns out to be too small for even a single 'ByteBundle' value, a
 -- 'BucketOverflow' exception is thrown.
 instance JetSink ByteBundle [BoundedSize File] where

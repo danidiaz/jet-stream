@@ -44,6 +44,7 @@ module Jet (
         J.zipIO,
         J.zipWithIO,
         -- * Control operations
+        -- $control
         J.withFile, 
         J.bracket,
         J.bracket_,
@@ -51,11 +52,13 @@ module Jet (
         J.finally,
         J.onException, 
         -- ** Building your own
+        -- $doityourself
         J.control,
         J.unsafeCoerceControl,
         J.control_,
         J.unsafeCoerceControl_,
         -- * Folding Jets
+        -- $folding
         J.fold,
         J.foldIO,
         -- * Byte utils
@@ -168,3 +171,40 @@ import Data.Functor ((<&>))
 -- Functions that create process specs for use with 'throughProcess'. For more control, import the whole of "System.Process".
 --
 
+-- $folding These functions can be used directly, but they're also useful for
+-- interfacing with the @Applicative@ folds from the
+-- [foldl](https://hackage.haskell.org/package/foldl) library, with the help of
+-- functions like @Control.Foldl.purely@ and @Control.Foldl.impurely@.
+--
+-- @Applicative@ folds are useful because they let you run multiple
+-- \"analyses\" of a 'Jet' while goint through it once.
+
+
+-- $doityourself
+-- These are for advanced usage. 
+--
+-- Sometimes we want to lift some existing
+-- resource-handling operation not already covered, one that works with plain
+-- 'IO' values. These functions help with that.
+--
+-- They have a linear type to statically forbid
+-- [\"funny\"](http://blog.ezyang.com/2012/01/monadbasecontrol-is-unsound/)
+-- operations like @\\x -> x *> x@ that disrupt proper threading of the
+-- consumer state.
+--
+
+
+
+-- $control
+-- Some 'Jet's must allocate resources to do its work. For example, opening a
+-- text file and yielding its lines. These resources must be promptly released
+-- when the 'Jet' itself finishes or the consumers stops it (for example, by
+-- using 'limit' on the 'Jet'). They must also be released in the face of
+-- exceptions.
+--
+-- Here are various control operations like those from "Control.Exception", but
+-- lifted to work on 'Jet's.
+--
+-- When put in a do-block, these operations \"protect\" every statement in the
+-- do-block below the operation itself.
+--
