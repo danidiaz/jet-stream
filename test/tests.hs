@@ -43,6 +43,7 @@ import Data.ByteString qualified as B
 import Data.ByteString.Lazy qualified as BL
 import Data.Foldable
 import Debug.Trace
+import Data.Functor.Identity
 
 import Jet
 import Jet qualified as J
@@ -62,6 +63,16 @@ tests =
                         testCase ("splitter splitSize=" ++ show splitSize ++ " bucketSize=" ++ show bucketSize) $ 
                             assertBytesCorrectlySplit bucketSize (bytePieces splitSize az)
              in tests
+    ,   testGroup "byteBundleSplitter" $
+            let tests = do
+                    -- splitSize <- [1]
+                    -- bucketSize <- [2]
+                    splitSize <- [1..7]
+                    bucketSize <- [splitSize..10]
+                    pure $ 
+                        testCase ("splitter splitSize=" ++ show splitSize ++ " bucketSize=" ++ show bucketSize) $ 
+                            assertByteBundlesCorrectlySplit bucketSize (bytePieces splitSize az)
+             in tests
     ]
 
 az :: ByteString
@@ -79,8 +90,8 @@ bytePieces size =
 assertBytesCorrectlySplit :: Int -> [ByteString] -> IO ()
 assertBytesCorrectlySplit bucketSize inputs = do
     let buckets = Prelude.repeat bucketSize
-        groupsJet = J.recast (J.bytesOverBuckets buckets) combineIntoLists (J.each inputs)
-    fragmentedGroups <- J.toList groupsJet 
+        j = J.recast (J.bytesOverBuckets buckets) combineIntoLists (J.each inputs)
+    fragmentedGroups <- J.toList j 
     let groups :: [ByteString] = mconcat <$> fragmentedGroups
         concatenatedInput = T.decodeUtf8 $ mconcat inputs
         concatenatedOutput = T.decodeUtf8 $ mconcat groups
@@ -93,6 +104,25 @@ assertBytesCorrectlySplit bucketSize inputs = do
     -- traceIO "--------------------------"
     assertBool "group sizes are wrong" $ all (\g -> B.length g == bucketSize) (Prelude.init groups)
     pure ()
+
+assertByteBundlesCorrectlySplit :: Int -> [ByteString] -> IO ()
+assertByteBundlesCorrectlySplit bucketSize inputs = do
+    let buckets = Prelude.repeat bucketSize
+        j = J.recast (J.byteBundlesOverBuckets buckets) combineIntoLists (bundle . Identity <$> J.each inputs)
+    fragmentedGroups <- J.toList j 
+    let groups :: [ByteString] = mconcat <$> fragmentedGroups
+        concatenatedInput = T.decodeUtf8 $ mconcat inputs
+        concatenatedOutput = T.decodeUtf8 $ mconcat groups
+    assertEqual "combined inputs and result" concatenatedInput concatenatedOutput
+    -- traceIO "--------------------------"
+    -- traceIO $ "+ original groups = " ++ show fragmentedGroups
+    -- traceIO $ "+ collected groups = " ++ show groups
+    -- traceIO $ "* bucket size = " ++ show bucketSize
+    -- traceIO $ show $ B.length <$> Prelude.init groups
+    -- traceIO "--------------------------"
+    assertBool "group sizes are wrong" $ all (\g -> B.length g <= bucketSize) (Prelude.init groups)
+    pure ()
+
 
 main :: IO ()
 main = defaultMain tests
