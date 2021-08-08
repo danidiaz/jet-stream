@@ -72,6 +72,14 @@ tests =
                         testCase ("splitter splitSize=" ++ show splitSize ++ " bucketSize=" ++ show bucketSize) $ 
                             assertByteBundlesCorrectlySplit bucketSize (bytePieces splitSize az)
              in tests
+    ,   
+        testGroup "lines" $
+            let tests = do
+                    fragmentSize <- [1..13]
+                    pure $ 
+                        testCase ("fragment size " ++ show fragmentSize) $
+                           assertLines fragmentSize lineData01 lineExpected01 
+             in tests
     ]
 
 az :: ByteString
@@ -123,6 +131,27 @@ assertByteBundlesCorrectlySplit bucketSize inputs = do
     assertBool "group sizes are wrong" $ all (\g -> B.length g <= bucketSize) (Prelude.init groups)
     pure ()
 
+
+lineData01 :: Text
+lineData01 = T.pack "aaa\nbb\nccc\ndddd\n\neee\n\n\nfffffffff\ng\niiiii"
+
+lineExpected01 :: [Line] 
+lineExpected01 = textToLine . T.pack <$> ["aaa","bb","ccc","dddd","","eee","","","fffffffff", "g", "iiiii"]
+
+textPieces :: Int -> Text -> [Text]
+textPieces size =
+    let go t =
+            if T.null t
+            then []
+            else let (left,right) = T.splitAt size t
+                 in left : go right
+    in go
+
+assertLines :: Int -> Text -> [Line] -> IO ()
+assertLines textFragmentSize input expected = do
+    let pieces = textPieces textFragmentSize input
+    ls <- J.each pieces & J.lines & J.toList
+    assertEqual "lines do not match expected" expected ls
 
 main :: IO ()
 main = defaultMain tests
