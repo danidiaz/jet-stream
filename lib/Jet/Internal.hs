@@ -711,18 +711,25 @@ data AmIContinuing = Continuing
 --
 -- Useful in combination with 'recast'.
 bytesOverBuckets :: [Int] -> Splitter ByteString ByteString
-bytesOverBuckets buckets = MealyIO step mempty (pure (Pair NotContinuing buckets))
+bytesOverBuckets buckets0 = MealyIO step mempty (pure (Pair NotContinuing buckets0))
     where
     step splitterState b = do
         let (continueResult, Pair continuing' buckets', b') = continue splitterState b
-        pure case continuing' of
-            Continuing -> 
-                (continueResult , Pair Continuing buckets')
-            NotContinuing ->
-                first (mappend continueResult) (entires mempty b' buckets')
+        if | B.null b' ->
+             pure (continueResult, Pair continuing' buckets') 
+           | otherwise -> 
+                 let (entiresResult, splitterState') = makeEntires mempty b' buckets'
+                  in pure (continueResult <> entiresResult, splitterState')
     continue :: Pair AmIContinuing [Int] -> ByteString -> (SplitStepResult ByteString, Pair AmIContinuing [Int], ByteString)
-    continue (Pair NotContinuing buckets) b = ( mempty ,         Pair NotContinuing buckets , b)
-    continue (Pair Continuing []) b =         ( continueWith b , Pair Continuing buckets ,    B.empty)
+    continue (Pair NotContinuing []) b =      ( nextWith b , Pair NotContinuing [] , B.empty)
+    continue (Pair Continuing []) b =         ( continueWith b , Pair Continuing [] , B.empty)
+    continue (Pair NotContinuing (bucket : buckets)) b = 
+        let blen = B.length b
+         in case compare blen bucket of
+                LT -> (nextWith b, Pair Continuing (bucket - blen : buckets), B.empty)
+                EQ -> (entireWith (singleton b), Pair NotContinuing buckets, B.empty)
+                GT -> let (left,right) = B.splitAt bucket b
+                       in (entireWith (singleton left), Pair NotContinuing buckets, right)  
     continue (Pair Continuing (bucket : buckets)) b = 
         let blen = B.length b
          in case compare blen bucket of
@@ -730,15 +737,15 @@ bytesOverBuckets buckets = MealyIO step mempty (pure (Pair NotContinuing buckets
                 EQ -> (continueWith b, Pair NotContinuing buckets, B.empty)
                 GT -> let (left,right) = B.splitAt bucket b
                        in (continueWith left, Pair NotContinuing buckets, right)  
-    entires :: DList ByteString -> ByteString -> [Int] -> (SplitStepResult ByteString, Pair AmIContinuing [Int])
-    entires acc b []                 = (entireWith acc <> nextWith b, Pair Continuing [])
-    entires acc b (bucket : buckets) = 
+    makeEntires :: DList ByteString -> ByteString -> [Int] -> (SplitStepResult ByteString, Pair AmIContinuing [Int])
+    makeEntires acc b []                 = (entireWith acc <> nextWith b, Pair Continuing [])
+    makeEntires acc b (bucket : buckets) = 
         let blen = B.length b
          in case compare blen bucket of
                 LT -> (entireWith acc <> nextWith b, Pair Continuing (bucket - blen : buckets))
                 EQ -> (entireWith (acc <> singleton b), Pair NotContinuing buckets)
                 GT -> let (left,right) = B.splitAt bucket b
-                       in entires (acc <> singleton left) right buckets -- non-terminal
+                       in makeEntires (acc <> singleton left) right buckets -- non-terminal
     continueWith b = mempty { continuationOfPreviouslyStartedGroup = [b] }
     entireWith bdf = mempty { entireGroups = fmap pure (closeDList bdf) }
     nextWith b = mempty { startOfNewGroup = [b] }
