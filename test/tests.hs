@@ -53,22 +53,21 @@ tests =
   testGroup
     "All"
     [
-        testGroup "byteSplitter" $
+    testGroup "byteSplitter" $
+        let tests = do
+                -- splitSize <- [1]
+                -- bucketSize <- [2]
+                splitSize <- [1..7]
+                bucketSize <- [1..10]
+                pure $ 
+                    testCase ("splitter splitSize=" ++ show splitSize ++ " bucketSize=" ++ show bucketSize) $ 
+                        assertBytesCorrectlySplit bucketSize (bytePieces splitSize az)
+         in tests
+    ,   
+        testGroup "byteBundleSplitter" $
             let tests = do
-                    -- splitSize <- [1]
-                    -- bucketSize <- [2]
                     splitSize <- [1..7]
-                    bucketSize <- [1..10]
-                    pure $ 
-                        testCase ("splitter splitSize=" ++ show splitSize ++ " bucketSize=" ++ show bucketSize) $ 
-                            assertBytesCorrectlySplit bucketSize (bytePieces splitSize az)
-             in tests
-    ,   testGroup "byteBundleSplitter" $
-            let tests = do
-                    -- splitSize <- [1]
-                    -- bucketSize <- [2]
-                    splitSize <- [1..7]
-                    bucketSize <- [splitSize..10]
+                    bucketSize <- [splitSize..13]
                     pure $ 
                         testCase ("splitter splitSize=" ++ show splitSize ++ " bucketSize=" ++ show bucketSize) $ 
                             assertByteBundlesCorrectlySplit bucketSize (bytePieces splitSize az)
@@ -115,6 +114,7 @@ assertByteBundlesCorrectlySplit bucketSize inputs = do
         concatenatedOutput = T.decodeUtf8 $ mconcat groups
     assertEqual "combined inputs and result" concatenatedInput concatenatedOutput
     -- traceIO "--------------------------"
+    -- traceIO $ "+ inputs = " ++ show inputs
     -- traceIO $ "+ original groups = " ++ show fragmentedGroups
     -- traceIO $ "+ collected groups = " ++ show groups
     -- traceIO $ "* bucket size = " ++ show bucketSize
