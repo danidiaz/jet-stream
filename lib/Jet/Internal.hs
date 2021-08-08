@@ -1268,7 +1268,7 @@ throughProcess_  procConf procSpec upstream = Jet \stop step initial -> do
                                    | otherwise -> do
                                      b <- _readFromStdout stdout'
                                      !s' <- step s b
-                                     stdoutReader s
+                                     stdoutReader s'
                     _runConceit $ 
                         _Conceit do stdinWriter
                         *> 
