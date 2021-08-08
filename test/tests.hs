@@ -80,11 +80,15 @@ assertBytesCorrectlySplit :: Int -> [ByteString] -> IO ()
 assertBytesCorrectlySplit bucketSize inputs = do
     let buckets = Prelude.repeat bucketSize
         groupsJet = J.recast (J.bytesOverBuckets buckets) combineIntoLists (J.each inputs)
-    groups :: [ByteString] <- mconcat <$> J.toList groupsJet 
-    let concatenatedInput = T.decodeUtf8 $ mconcat inputs
+    fragmentedGroups <- J.toList groupsJet 
+    let groups :: [ByteString] = mconcat <$> fragmentedGroups
+        concatenatedInput = T.decodeUtf8 $ mconcat inputs
         concatenatedOutput = T.decodeUtf8 $ mconcat groups
     assertEqual "combined inputs and result" concatenatedInput concatenatedOutput
     -- traceIO "--------------------------"
+    -- traceIO $ "+ original groups = " ++ show fragmentedGroups
+    -- traceIO $ "+ collected groups = " ++ show groups
+    -- traceIO $ "* bucket size = " ++ show bucketSize
     -- traceIO $ show $ B.length <$> Prelude.init groups
     -- traceIO "--------------------------"
     assertBool "group sizes are wrong" $ all (\g -> B.length g == bucketSize) (Prelude.init groups)
