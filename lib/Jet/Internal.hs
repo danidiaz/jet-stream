@@ -870,11 +870,18 @@ pattern Line text <- Line_ (TL.toStrict -> text)
 lineToText :: Line -> Text
 lineToText (Line_ text) = TL.toStrict text
 
+-- | Converts a 'Line' to an utf8-encdoed 'ByteBundle', without adding the newline.
+lineToUtf8 :: Line -> ByteBundle
+lineToUtf8 (Line_ l) = TL.toChunks l <&> T.encodeUtf8 & bundle
+
 textToLine :: Text -> Line
 textToLine = Line_ . TL.fromStrict
 
-textToBundleUtf8 :: Text -> ByteBundle
-textToBundleUtf8 t = ByteBundle (t & T.encodeUtf8 & BL.fromStrict)
+newline :: Text
+newline = T.singleton '\n'
+
+textToUtf8 :: Text -> ByteBundle
+textToUtf8 t = ByteBundle (t & T.encodeUtf8 & BL.fromStrict)
 
 lineContains :: Text -> Line -> Bool 
 lineContains t (Line_ l)  = TL.isInfixOf (TL.fromStrict t) l

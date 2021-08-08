@@ -41,6 +41,8 @@ import Data.Text.Lazy.Encoding qualified as TL
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Lazy qualified as BL
+import Data.Foldable
+import Debug.Trace
 
 import Jet
 import Jet qualified as J
@@ -58,7 +60,7 @@ tests =
                     bucketSize <- [1..10]
                     pure $ 
                         testCase ("splitter splitSize=" ++ show splitSize ++ " bucketSize=" ++ show bucketSize) $ 
-                            assertBytesCorrectlySplit (Prelude.repeat bucketSize) (bytePieces splitSize az)
+                            assertBytesCorrectlySplit bucketSize (bytePieces splitSize az)
              in tests
     ]
 
@@ -74,14 +76,18 @@ bytePieces size =
                  in left : go right
     in go
 
-assertBytesCorrectlySplit :: [Int] -> [ByteString] -> IO ()
-assertBytesCorrectlySplit buckets inputs = do
-    let groupsJet = J.recast (J.bytesOverBuckets buckets) combineIntoLists (J.each inputs)
+assertBytesCorrectlySplit :: Int -> [ByteString] -> IO ()
+assertBytesCorrectlySplit bucketSize inputs = do
+    let buckets = Prelude.repeat bucketSize
+        groupsJet = J.recast (J.bytesOverBuckets buckets) combineIntoLists (J.each inputs)
     groups :: [ByteString] <- mconcat <$> J.toList groupsJet 
-    let concatenatedInput = mconcat inputs
-        concatenatedOutput = mconcat groups
-        allButLastGroups = Prelude.init groups
-    assertEqual "combined inputs and result" (T.decodeUtf8 concatenatedInput) (T.decodeUtf8 concatenatedOutput)
+    let concatenatedInput = T.decodeUtf8 $ mconcat inputs
+        concatenatedOutput = T.decodeUtf8 $ mconcat groups
+    assertEqual "combined inputs and result" concatenatedInput concatenatedOutput
+    -- traceIO "--------------------------"
+    -- traceIO $ show $ B.length <$> Prelude.init groups
+    -- traceIO "--------------------------"
+    assertBool "group sizes are wrong" $ all (\g -> B.length g == bucketSize) (Prelude.init groups)
     pure ()
 
 main :: IO ()
