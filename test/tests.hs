@@ -86,3 +86,10 @@ assertBytesCorrectlySplit buckets inputs = do
 
 main :: IO ()
 main = defaultMain tests
+
+-- TODO
+-- - test byteBundlesOverBuckets
+-- - test newlines
+-- - test throughProcess
+-- - test traverseConcurrently
+--
