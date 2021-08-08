@@ -35,6 +35,7 @@ import Control.Exception
 import Data.Foldable qualified
 import Prelude hiding (traverse_, for_, filter, drop, dropWhile, fold, take,
                        takeWhile, unfold, zip, zipWith, filterM, lines, intersperse, unlines)
+import Prelude qualified
 import Unsafe.Coerce qualified
 import System.IO (Handle, IOMode(..), hClose, openBinaryFile)
 import System.IO qualified
@@ -68,6 +69,7 @@ import Data.Traversable qualified
 import Data.Maybe
 import Data.List qualified
 import Data.Bifunctor (first)
+-- import Debug.Trace
 
 -- $setup
 --
@@ -358,7 +360,7 @@ length (Jet f) = do
     l <- f (const False) (\s _ -> pure (succ s)) 0
     pure l
 
-data Pair a b = Pair !a !b
+data Pair a b = Pair !a !b deriving Show
 
 pairExtract (Pair _ b) = b
 
@@ -701,7 +703,7 @@ accumByteLengths :: Jet ByteString -> Jet (Int,ByteString)
 accumByteLengths = mapAccum (\acc bytes -> let acc' = acc + B.length bytes in (acc',(acc',bytes))) (0 :: Int)
 
 data AmIContinuing = Continuing
-                   | NotContinuing
+                   | NotContinuing deriving Show
 
 -- | Splits a stream of bytes into groups bounded by maximum byte sizes. When
 -- one group \"fills up\", the next one is started.
@@ -713,39 +715,50 @@ data AmIContinuing = Continuing
 bytesOverBuckets :: [Int] -> Splitter ByteString ByteString
 bytesOverBuckets buckets0 = MealyIO step mempty (pure (Pair NotContinuing buckets0))
     where
+    -- logStep s@(Pair c zzz) a = do
+    --     putStrLn "foooo!"
+    --     System.IO.hFlush System.IO.stdout
+    --     traceIO ("state: " ++ show c)
+    --     traceIO ("bucket: " ++ show (Prelude.take 2 zzz))
+    --     traceIO ("input: " ++ show a)
+    --     r@(nexts, _) <- step s a
+    --     traceIO ("output: " ++ show nexts)
+    --     pure r
+    step :: Pair AmIContinuing [Int] -> ByteString -> IO (SplitStepResult ByteString, Pair AmIContinuing [Int])
     step splitterState b = do
-        let (continueResult, Pair continuing' buckets', b') = continue splitterState b
-        if | B.null b' ->
+        (continueResult, Pair continuing' buckets', b') <- continue splitterState b
+        if | B.null b' -> 
              pure (continueResult, Pair continuing' buckets') 
-           | otherwise -> 
-                 let (entiresResult, splitterState') = makeEntires mempty b' buckets'
-                  in pure (continueResult <> entiresResult, splitterState')
-    continue :: Pair AmIContinuing [Int] -> ByteString -> (SplitStepResult ByteString, Pair AmIContinuing [Int], ByteString)
-    continue (Pair NotContinuing []) b =      ( nextWith b , Pair NotContinuing [] , B.empty)
-    continue (Pair Continuing []) b =         ( continueWith b , Pair Continuing [] , B.empty)
-    continue (Pair NotContinuing (bucket : buckets)) b = 
+           | otherwise ->  do
+             (entiresResult, splitterState') <- makeEntires mempty b' buckets'
+             pure (continueResult <> entiresResult, splitterState')
+    continue :: Pair AmIContinuing [Int] -> ByteString -> IO (SplitStepResult ByteString, Pair AmIContinuing [Int], ByteString)
+    continue (Pair NotContinuing []) b = pure ( nextWith b , Pair NotContinuing [] , B.empty)
+    continue (Pair Continuing []) b =    pure ( continueWith b , Pair Continuing [] , B.empty)
+    continue (Pair NotContinuing (bucket : buckets)) b = do
         let blen = B.length b
-         in case compare blen bucket of
-                LT -> (nextWith b, Pair Continuing (bucket - blen : buckets), B.empty)
-                EQ -> (entireWith (singleton b), Pair NotContinuing buckets, B.empty)
-                GT -> let (left,right) = B.splitAt bucket b
-                       in (entireWith (singleton left), Pair NotContinuing buckets, right)  
-    continue (Pair Continuing (bucket : buckets)) b = 
+        -- traceIO ("b = " ++ show b ++ " bucket size= " ++ show bucket)
+        pure case compare blen bucket of
+            LT -> (nextWith b, Pair Continuing (bucket - blen : buckets), B.empty)
+            EQ -> (entireWith (singleton b), Pair NotContinuing buckets, B.empty)
+            GT -> let (left,right) = B.splitAt bucket b
+                   in (entireWith (singleton left), Pair NotContinuing buckets, right)  
+    continue (Pair Continuing (bucket : buckets)) b = do
         let blen = B.length b
-         in case compare blen bucket of
-                LT -> (continueWith b, Pair Continuing (bucket - blen : buckets), B.empty)
-                EQ -> (continueWith b, Pair NotContinuing buckets, B.empty)
-                GT -> let (left,right) = B.splitAt bucket b
-                       in (continueWith left, Pair NotContinuing buckets, right)  
-    makeEntires :: DList ByteString -> ByteString -> [Int] -> (SplitStepResult ByteString, Pair AmIContinuing [Int])
-    makeEntires acc b []                 = (entireWith acc <> nextWith b, Pair Continuing [])
-    makeEntires acc b (bucket : buckets) = 
+        pure case compare blen bucket of
+            LT -> (continueWith b, Pair Continuing (bucket - blen : buckets), B.empty)
+            EQ -> (continueWith b, Pair NotContinuing buckets, B.empty)
+            GT -> let (left,right) = B.splitAt bucket b
+                   in (continueWith left, Pair NotContinuing buckets, right)  
+    makeEntires :: DList ByteString -> ByteString -> [Int] -> IO (SplitStepResult ByteString, Pair AmIContinuing [Int])
+    makeEntires acc b []                 = pure (entireWith acc <> nextWith b, Pair Continuing [])
+    makeEntires acc b (bucket : buckets) = do
         let blen = B.length b
-         in case compare blen bucket of
-                LT -> (entireWith acc <> nextWith b, Pair Continuing (bucket - blen : buckets))
-                EQ -> (entireWith (acc <> singleton b), Pair NotContinuing buckets)
-                GT -> let (left,right) = B.splitAt bucket b
-                       in makeEntires (acc <> singleton left) right buckets -- non-terminal
+        case compare blen bucket of
+            LT -> pure (entireWith acc <> nextWith b, Pair Continuing (bucket - blen : buckets))
+            EQ -> pure (entireWith (acc <> singleton b), Pair NotContinuing buckets)
+            GT -> do let (left,right) = B.splitAt bucket b
+                     makeEntires (acc <> singleton left) right buckets -- non-terminal
     continueWith b = mempty { continuationOfPreviouslyStartedGroup = [b] }
     entireWith bdf = mempty { entireGroups = fmap pure (closeDList bdf) }
     nextWith b = mempty { startOfNewGroup = [b] }
@@ -1331,26 +1344,33 @@ recast (MealyIO splitterStep splitterCoda splitterAlloc)
       -- can use to process the next one.
       stop' (Triple _ (RecastState OutsideGroup []) _) = True
       stop' (Triple _ _ s) = stop s  
+
       step' (Triple splitterState recastState s) a = do
         (splitResult,  splitterState') <- splitterStep splitterState a 
         Pair recastState' s' <- advanceRecast splitResult recastState s 
         pure (Triple splitterState' recastState' s')
+
       advanceRecast ssr@(SplitStepResult {continuationOfPreviouslyStartedGroup, entireGroups, startOfNewGroup}) (RecastState areWeInside foldAllocs) s = do
         case (areWeInside, entireGroups, startOfNewGroup) of
             -- If there aren't any new groups and we don't start an incomplete one, just advance the current fold
             (InsideGroup foldState, [], []) -> do          
+                -- traceIO $ "recast inside group just continuing"
                 foldState' <- advanceGroupWithougClosing foldState continuationOfPreviouslyStartedGroup
                 pure (Pair (RecastState (InsideGroup foldState') foldAllocs) s) -- main state didn't change
             (InsideGroup foldState,  _, _) -> do          
+                -- traceIO $ "recast inside group closing"
                 !c <- processSingleGroup foldState continuationOfPreviouslyStartedGroup 
                 !s' <- step s c
                 if 
                     | stop s' -> do
+                        -- traceIO $ "recast inside group pure"
                         pure (Pair (RecastState OutsideGroup foldAllocs) s')
                     | otherwise -> do
+                        -- traceIO $ "recast inside group advancing"
                         advanceRecast ssr (RecastState OutsideGroup foldAllocs) s'
             -- if we are outside of a group, the "continuationOfPreviouslyStartedGroup" is ignored.
             (OutsideGroup, _, _) -> do
+                -- traceIO $ "recast outside group"
                 -- doens't return foldState becasue we close the groups
                 Pair foldAllocs' s' <- processEntireGroups foldAllocs s entireGroups 
                 bail <- pure (Pair (RecastState OutsideGroup foldAllocs') s')
@@ -1366,6 +1386,7 @@ recast (MealyIO splitterStep splitterCoda splitterAlloc)
                                     [] -> do
                                         pure bail
                                     alloc : allocs -> do
+                                        -- traceIO $ "recast we should be allocating here"
                                         -- there is a next group, so let's begin it
                                         !foldState0 <- alloc
                                         foldState <- processBeginNextGroup foldState0 startOfNewGroup
@@ -1405,17 +1426,40 @@ recast (MealyIO splitterStep splitterCoda splitterAlloc)
         pure foldState
       processBeginNextGroup foldState (b:bs) = do
         !foldState' <- foldStep foldState b
-        processBeginNextGroup foldState bs
+        processBeginNextGroup foldState' bs
       initial' = Triple initialSplitterState (RecastState OutsideGroup foldAllocs0) initial
   Triple splitterState recastState final <- upstream stop' step' initial'
+  -- TODO:
+  -- what happens if there's a fold ongoing when we stop?
+  let closePendingFold = \case 
+        RecastState OutsideGroup _ -> do
+            pure ()
+        RecastState (InsideGroup foldState) _ -> do
+            _ <- foldCoda foldState
+            pure ()
   if 
-    | stop final  -> do
+    | stop final -> do
+      closePendingFold recastState
       pure final
     | otherwise -> do
       splitResult <- splitterCoda splitterState
       -- We discard the "begins next group"; it doesn't make sense in this final step.
-      Pair _ final' <- advanceRecast (splitResult { startOfNewGroup = [] }) recastState final
-      pure final'
+      Pair recastState' final' <- advanceRecast (splitResult { startOfNewGroup = [] }) recastState final
+      if | stop final' -> do
+           -- TODO:
+           -- should we dealloc here? Maybe there's a fold reaminging... we should close it. See below.
+           closePendingFold recastState'
+           pure final'
+         | otherwise -> do
+              case recastState' of
+                RecastState OutsideGroup _ -> do
+                    -- traceIO $ "final! outside group"
+                    pure final'
+                RecastState (InsideGroup foldState) _ -> do
+                    -- traceIO $ "final! inside group"
+                    c <- foldCoda foldState
+                    final'' <- step final' c
+                    pure final''
 
 -- | A 'Combiners' value knows how to process a sequence of groups, while
 -- keeping a (existentially hidden) state for each group.
@@ -1536,7 +1580,7 @@ data SplitStepResult b = SplitStepResult {
      -- for the beginning of a new one.
      startOfNewGroup :: [b]
   }
-  deriving Functor
+  deriving (Functor, Show)
 
 instance Semigroup (SplitStepResult b) where
     SplitStepResult c1 e1 b1 <> SplitStepResult c2 e2 b2 = 

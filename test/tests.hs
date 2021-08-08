@@ -52,6 +52,8 @@ tests =
     [
         testGroup "byteSplitter" $
             let tests = do
+                    -- splitSize <- [1]
+                    -- bucketSize <- [2]
                     splitSize <- [1..7]
                     bucketSize <- [1..10]
                     pure $ 
