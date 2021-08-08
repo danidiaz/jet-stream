@@ -1429,8 +1429,13 @@ recast (MealyIO splitterStep splitterCoda splitterAlloc)
         processBeginNextGroup foldState' bs
       initial' = Triple initialSplitterState (RecastState OutsideGroup foldAllocs0) initial
   Triple splitterState recastState final <- upstream stop' step' initial'
-  -- TODO:
-  -- what happens if there's a fold ongoing when we stop?
+  -- What happens if there's a fold ongoing when we stop? Right now we always close it, which seems to be a reasonable
+  -- action (because the fold coda might hide a finalizer).
+  --
+  -- Also, when can it happen that we reach this point with an ongoing fold? 
+  -- If I understand correctly:
+  --    - it can only happen when the upstream closes and leaves the fold open.
+  --    - it can't (?) happen when the consumer stops early. 
   let closePendingFold = \case 
         RecastState OutsideGroup _ -> do
             pure ()
