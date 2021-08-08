@@ -80,6 +80,23 @@ tests =
                         testCase ("fragment size " ++ show fragmentSize) $
                            assertLines fragmentSize lineData01 lineExpected01 
              in tests
+    ,
+        testGroup "process" $ 
+            [
+                testCase "simple" $ 
+                    do resultLines <-
+                             mempty
+                           & linesThroughProcess defaults (shell "echo foo")
+                           & J.toList
+                       assertEqual "input and output lines don't match" (textToLine . T.pack <$> ["foo"]) resultLines
+                -- testCase "simple" $ 
+                --     do let inputLines = textToLine . T.pack <$> ["aaa","bbb","ccc"]
+                --        resultLines <-
+                --              J.each inputLines
+                --            & linesThroughProcess defaults (shell "cat")
+                --            & J.toList
+                --        assertEqual "input and output lines don't match" inputLines resultLines
+            ]
     ]
 
 az :: ByteString
