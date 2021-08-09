@@ -10,8 +10,9 @@ following itches:
   just like with regular lists. The `Functor` `Applicative` and `Monad`
   instances also resemble those of lists.
 
-- Typical "control" functions like `withFile`, `bracket`, `finally` and
-  `onError` are easy to integrate in a streaming pipeline. 
+- There are direct analogues of functions like `withFile`, `bracket`, `finally`
+  and `onError` that easy to integrate in a streaming pipeline, and behave
+  smartly when combined with functions like `take`.
 
 - Compatible with the [foldl](https://hackage.haskell.org/package/foldl)
   library for collector-like terminal operations. (All self-respecting
@@ -21,6 +22,10 @@ In order to achieve those objectives, the following sacrifices have been made:
 
 - No flexibility in the underlying monad for the stream effects: it's always
   `IO`.
+
+- No separate "channels" that return extra information at the end of the
+  stream. This means exceptions are the only way of signalling errors or
+  unexpected conditions.
 
 - Elements in a stream can't be "extracted" one by one in a pull-based way,
   like you can do for example in
