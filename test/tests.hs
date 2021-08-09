@@ -94,13 +94,23 @@ tests =
                            & linesThroughProcess defaults (shell "echo foo")
                            & J.toList
                        assertEqual "input and output lines don't match" (textToLine . T.pack <$> ["foo"]) resultLines
-                -- testCase "simple" $ 
-                --     do let inputLines = textToLine . T.pack <$> ["aaa","bbb","ccc"]
-                --        resultLines <-
-                --              J.each inputLines
-                --            & linesThroughProcess defaults (shell "cat")
-                --            & J.toList
-                --        assertEqual "input and output lines don't match" inputLines resultLines
+            ,
+                testCase "simple 2" $ 
+                    do let inputLines = textToLine . T.pack <$> ["aaa","bbb","ccc"]
+                       resultLines <-
+                             J.each inputLines
+                           & linesThroughProcess defaults (shell "cat")
+                           & J.toList
+                       assertEqual "input and output lines don't match" inputLines resultLines
+            ,
+                testCase "interruption" $ 
+                    do let expectedLines = textToLine . T.pack <$> ["aaa","bbb"]
+                       resultLines <-
+                             mempty
+                           & linesThroughProcess defaults (shell "{ printf \"aaa\\nbbb\\nccc\\n\" ; yes | head -n 1000000 ; sleep infinity ; }")
+                           & J.limit 2
+                           & J.toList
+                       assertEqual "unexpected lines at output" expectedLines resultLines
             ]
     , 
         testGroup "concurrency" $ 
