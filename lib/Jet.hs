@@ -1,5 +1,7 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE PatternSynonyms #-}
+-- | A streaming library build around the 'Jet' type, which behaves as a kind of \"effectful list\".
+--
 module Jet (
         -- * The Jet type
         Jet,

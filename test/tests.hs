@@ -172,6 +172,7 @@ assertByteBundlesCorrectlySplit bucketSize inputs = do
     let groups :: [ByteString] = mconcat <$> fragmentedGroups
         concatenatedInput = T.decodeUtf8 $ mconcat inputs
         concatenatedOutput = T.decodeUtf8 $ mconcat groups
+        concatenatedOutput' = T.decodeUtf8 $ mconcat $ Data.List.intersperse (T.encodeUtf8 (T.singleton '-')) groups
     assertEqual "combined inputs and result" concatenatedInput concatenatedOutput
     -- traceIO "--------------------------"
     -- traceIO $ "+ inputs = " ++ show inputs
@@ -181,6 +182,8 @@ assertByteBundlesCorrectlySplit bucketSize inputs = do
     -- traceIO $ show $ B.length <$> Prelude.init groups
     -- traceIO "--------------------------"
     assertBool "group sizes are wrong" $ all (\g -> B.length g <= bucketSize) (Prelude.init groups)
+    Data.Foldable.for_ inputs \i -> 
+        assertBool "bundle divided" $ T.isInfixOf (T.decodeUtf8 i) concatenatedOutput'
     pure ()
 
 
