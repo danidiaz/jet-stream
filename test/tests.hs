@@ -25,6 +25,7 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE NumDecimals #-}
 {-# OPTIONS_GHC -Wno-partial-type-signatures  #-}
 module Main where
 
@@ -96,6 +97,10 @@ tests =
                 --            & linesThroughProcess defaults (shell "cat")
                 --            & J.toList
                 --        assertEqual "input and output lines don't match" inputLines resultLines
+            ]
+    , 
+        testGroup "concurrency" $ 
+            [
             ]
     ]
 
