@@ -107,7 +107,7 @@ tests =
                     do let expectedLines = textToLine . T.pack <$> ["aaa","bbb"]
                        resultLines <-
                              mempty
-                           & linesThroughProcess defaults (shell "{ printf \"aaa\\nbbb\\nccc\\n\" ; yes | head -n 1000000 ; sleep infinity ; }")
+                           & linesThroughProcess defaults (shell "{ printf \"aaa\\nbbb\\nccc\\n\" ; sleep infinity ; }")
                            & J.limit 2
                            & J.toList
                        assertEqual "unexpected lines at output" expectedLines resultLines
@@ -236,9 +236,3 @@ time action = do
     stop <- getCurrentTime
     pure (diffUTCTime stop start, a)
 
--- TODO
--- - test byteBundlesOverBuckets
--- - test newlines
--- - test throughProcess
--- - test traverseConcurrently
---

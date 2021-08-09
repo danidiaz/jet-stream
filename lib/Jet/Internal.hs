@@ -1307,12 +1307,12 @@ throughProcess_  procConf procSpec upstream = Jet \stop step initial -> do
                                      b <- _readFromStdout stdout'
                                      !s' <- step s b
                                      stdoutReader s'
-                    _runConceit $ 
+                    runConceit $ 
                         _Conceit do stdinWriter
                         *> 
                         _Conceit do stderrReader
                         *> 
-                        _Conceit do stdoutReader initial
+                        Conceit do stdoutReader initial
           pure (either id id finalEither) 
 
 -- | Configuration record with some extra options in addition to those in "CreateProcess".
