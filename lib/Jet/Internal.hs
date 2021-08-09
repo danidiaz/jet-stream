@@ -158,6 +158,9 @@ instance MonadIO Jet where
           step initial a
 
 -- | 'Jet' concatenation.
+-- 
+-- >>> J.each "ab" <> J.each "cd" & J.toList
+-- "abcd"
 instance Semigroup (Jet a) where
   Jet f1 <> Jet f2 = Jet \stop step s0 -> do
     -- perhaps some of the stop checks are redundant, the first one in particular?
@@ -174,6 +177,9 @@ instance Semigroup (Jet a) where
                 pure s2
 
 -- | 'mempty' is the empty 'Jet'.
+--
+-- >>> mempty <> J.each "ab" <> mempty & J.toList
+-- "ab"
 instance Monoid (Jet a) where
   mempty = Jet \_ _ initial -> pure initial
 
