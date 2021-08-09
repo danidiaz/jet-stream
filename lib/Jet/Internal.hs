@@ -526,6 +526,13 @@ data Touched =
       NotYetTouched
     | AlreadyTouched
 
+-- TODO: there's a bug here!!!!
+
+-- | 
+-- >>> J.each "abc" & J.intersperse '-' & J.toList
+--
+--
+--
 intersperse :: a -> Jet a -> Jet a
 intersperse intrusion (Jet upstream) = Jet \stop step initial -> do
   let stop' = stop . pairExtract
