@@ -92,7 +92,13 @@ import Data.Bifunctor (first)
 -- 
 newtype Jet a = Jet {
         runJet :: forall s. (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
-    } deriving (Functor)
+    } 
+
+-- | Maps over the yielded elements. '(<&>)' can be used to put the function last.
+--
+-- >>> J.each "aa" <&> succ & J.toList
+-- "bb"
+deriving stock instance Functor Jet
 
 -- | Go through the elements produced by a 'Jet', while keeping an
 -- state @s@ and possibly performing some effect.
@@ -144,11 +150,24 @@ instance Applicative Jet where
      in left stop (\s f -> right stop (step' f) s) initial
 
 -- | Similar to the instance for pure lists, that does search.
+--
+-- >>> :{
+-- do string <- J.each ["ab","cd"]
+--    J.each string
+-- &
+-- J.toList
+-- :}
+-- "abcd"
 instance Monad Jet where
   return = pure
   Jet m >>= k = Jet \stop step initial ->
     m stop (\s a -> runJet (k a) stop step s) initial
 
+-- |
+-- >>> liftIO (putStrLn "foo") <> liftIO (putStrLn "bar") & J.toList
+-- foo
+-- bar
+-- [(),()]
 instance MonadIO Jet where
   liftIO action = Jet \stop step initial ->
     if
@@ -193,6 +212,15 @@ instance MonadPlus Jet where
   mzero = mempty
   mplus = (<>)
 
+-- | A failed pattern-match in a do-block produces 'mzero'. 
+--
+-- >>> :{
+-- do Just c <- J.each [Nothing, Just 'a', Nothing, Just 'b']
+--    pure c
+-- & J.toList
+-- :}
+-- "ab"
+--
 instance MonadFail Jet where
   fail _ = mzero
 

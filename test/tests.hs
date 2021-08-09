@@ -106,10 +106,10 @@ tests =
             [
                 testCase "compare" $ do
                     let yieldAfter d x = sleep d *> pure x 
-                        delay = cents 1  
+                        delay = cents 100  
                         upstream = J.each "abcde"
                     (ts, rsequential) <- upstream & J.traverse (yieldAfter delay) & J.toList & time
-                    (t1, rconc1) <- upstream & J.traverseConcurrently defaults (yieldAfter delay) & J.toList & time
+                    (t1, rconc1) <- upstream & J.traverseConcurrently (numberOfWorkers 2) (yieldAfter delay) & J.toList & time
                     (t2, rconc2) <- upstream & J.traverseConcurrently (numberOfWorkers 10) (yieldAfter delay) & J.toList & time
                     let (rsequential', rconc1', rconc2') = (sort rsequential, sort rconc1, sort rconc2)
                     assertEqual "sequential != conc" rsequential' rconc1'
