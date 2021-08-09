@@ -13,8 +13,8 @@ description:
   resemble those of pure lists. There are also `Monoid`, `Alternative` and
   `MonadPlus` instances for stream concatenation.
 
-  Typical resource-managing operations like `withFile` can be easily used with
-  the streams.
+  Provides resource-managing operations like `withFile` that are easily
+  integrated into streams.
 
   For expressive and composable terminal operations, streams can be consumed
   with folds from the "foldl" library.
