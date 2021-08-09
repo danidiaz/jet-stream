@@ -48,6 +48,7 @@ import Debug.Trace
 import Data.Functor.Identity
 import Control.Concurrent
 import Data.List
+import Control.Exception
 
 import Jet
 import Jet qualified as J
@@ -116,6 +117,19 @@ tests =
                     assertEqual "conc != conc 2" rconc1' rconc2'
                     assertBool "conc not faster" (t1 < ts)
                     assertBool "conc2 not faster" (t2 < t1)
+                    pure ()
+            ,   testCase "cancelation" $ do
+                    latch <- newEmptyMVar 
+                    l <- 
+                        J.each "ab" 
+                        & traverseConcurrently (numberOfWorkers 2)
+                                               (\c -> do let delay 'a' = threadDelay 9999e6
+                                                             delay _   = pure ()
+                                                         (delay c *> pure c) `Control.Exception.onException` putMVar latch ())
+                        & J.limit 1
+                        & J.length
+                    _ <- takeMVar latch
+                    assertEqual "only 1 element" 1 l
                     pure ()
             ]
     ]

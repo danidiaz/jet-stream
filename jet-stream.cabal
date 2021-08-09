@@ -53,6 +53,7 @@ library
 
 test-suite tests
     import:           common
+    ghc-options:         -threaded
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
     main-is:          tests.hs

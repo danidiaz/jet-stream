@@ -20,6 +20,7 @@ module Jet (
         J.untilEOF,
         J.untilNothing,
         -- * List-like functions
+        -- $listlike
         J.toList,
         J.length,
         J.traverse,
@@ -210,3 +211,17 @@ import Data.Functor ((<&>))
 -- When put in a do-block, these operations \"protect\" every statement in the
 -- do-block below the operation itself.
 --
+
+
+-- $listlike
+--
+-- In these functions, the 'Jet' is working as a kind of \"effectful list\".
+-- The effects which produce the elements, and the effects with which we
+-- transform and consume the elements, are always 'IO' effects.
+--
+-- Don't confuse these functions with similarly named functions from
+-- 'Data.Traversable' or 'Control.Monad', for which 'Jet' doesn't work as the
+-- \"container\", but as the Applicative/Monadic effect itself.
+--
+
+

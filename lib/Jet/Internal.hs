@@ -77,6 +77,7 @@ import Data.Bifunctor (first)
 -- >>> :set -XImportQualifiedPost
 -- >>> :set -XScopedTypeVariables
 -- >>> :set -XLambdaCase
+-- >>> :set -XNumDecimals
 -- >>> import Jet (Jet, (&))
 -- >>> import Jet qualified as J
 -- >>> import Control.Foldl qualified as L
@@ -274,16 +275,15 @@ replicate :: Int -> a -> Jet a
 replicate n a = replicateIO n (pure a)
 
 -- |
---
 -- >>> J.replicateIO 2 (putStrLn "hi" *> pure True) & J.toList
 -- hi
 -- hi
 -- [True,True]
 --
+-- Don't confuse this with @Control.Monad.replicateM :: Int -> Jet a -> Jet [a]@ which has a combinatorial behavior.
+--
 replicateIO :: Int -> IO a -> Jet a
 replicateIO n ioa = take n (repeatIO ioa)
-
--- TODO: bug in iterate!
 
 -- |
 --
@@ -382,7 +382,7 @@ toList (Jet f) = do
     as <- f (const False) (\xs x -> pure (x : xs)) []
     pure (reverse as)
 
--- | Returns the number of elements yielded by the 'Jet'.
+-- | Returns the number of elements yielded by the 'Jet', exhausting it in the process.
 --
 -- >>> J.each "abc" & J.length
 -- 3
@@ -1586,6 +1586,9 @@ withCombiners step coda finalize allocators continuation = do
          tryFinalize
     pure r
 
+-- | Puts the elements of each group into a list that is kept in memory. This breaks streaming within the group.
+--
+-- Useful with 'recast'.
 combineIntoLists :: Combiners a [a]
 combineIntoLists = combiners
     (\s a -> pure (s <> singleton a))
