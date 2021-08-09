@@ -72,13 +72,13 @@ Example of bounded size:
 
 ## Some close cousins
 
-- [turtle](https://hackage.haskell.org/package/turtle). The `Shell` type kinda
+- [turtle](https://hackage.haskell.org/package/turtle). The `Shell` type
   resembles `Jet`. One possible difference is that `Shell` doesn't seem to
   provide a way for the `Shell` consumer to signal that no further values are
   needed, at least judging from the docs for
   [limit](https://hackage.haskell.org/package/turtle-1.5.22/docs/Turtle-Prelude.html#v:limit).
 
-  \"turtle\" also inspired having a separate type for lines.
+  \"turtle\" also inspired the idea of having a separate type for lines.
 
 - [streamly](https://hackage.haskell.org/package/streamly). I might have
   reinvented a subset of streamly ([but

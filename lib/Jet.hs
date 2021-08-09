@@ -6,9 +6,10 @@
 --
 -- >>> action = J.jet @Line (File "foo.txt") & J.limit 10 & J.sink stdout
 --
--- The code is using the 'J.jet' function to create the 'Jet'. 'J.jet' is part
--- of the 'J.JetSource' helper typeclass. Meanwhile, 'J.sink' is part of
--- the complementary 'J.JetSink' typeclass.
+-- The code is using the 'J.jet' function to create a 'Jet' of 'Line' values
+-- (read using the default system encoding). 'J.jet' is part of the
+-- 'J.JetSource' helper typeclass. Meanwhile, 'J.sink' is part of the
+-- complementary 'J.JetSink' typeclass.
 --
 -- Note also the use of '(&)', which is simply a flipped '($)'. I've found it
 -- useful to define forward-chained pipelines.
@@ -17,7 +18,8 @@
 --
 -- >>> action = J.jet @Line (File "foo.txt") & J.limit 10 & J.toList
 --
--- Imagine we wanted to print the combined lines of two files, excepting the first 10 lines of each: 
+-- Imagine we wanted to print the combined lines of two files, excepting the
+-- first 10 lines of each: 
 --
 -- >>> :{
 -- action = 
@@ -33,8 +35,28 @@
 --
 -- 'Jet's are 'Monoid's too, so we could have written:
 --
--- >>> action = [File "foo.txt", File "bar.txt"] & foldMap (jet @Line) & J.drop 10 & J.sink stdout
+-- >>> action = [File "foo.txt", File "bar.txt"] & foldMap (J.drop 10 . J.jet @Line) & J.sink stdout
 --
+-- Here's an interesting use of 'sink'. Imagine we have a big utf8-encoded file
+-- and we want to split it into a number of files of no more than 100000 bytes
+-- each, with the extra condition that we don't want to split any line between
+-- two files. We could do it like this:
+--
+-- >>> :{
+-- action =
+--    let buckets = BoundedSize 100000 . File . ("result.txt." ++) . show <$> [1..]
+--     in jet (File "12999.txt.utf-8") 
+--        & J.decodeUtf8 
+--        & J.lines 
+--      <&> (\line -> J.lineToUtf8 line <> J.textToUtf8 J.newline) 
+--        & J.sink buckets
+-- :}       
+--
+-- In this example we aren't using the default system encoding: instead of
+-- that, we are reading bytes, explicity decoding them with 'J.decodeUtf8' and
+-- finding 'J.lines'. Then we create a 'ByteBundle' for each 'Line' to signify
+-- that it shouldn't be broken, and end by writing to a sequence of
+-- 'BoundedSize' 'File's.
 --
 module Jet (
         -- * The Jet type
