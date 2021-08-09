@@ -42,9 +42,12 @@ import Data.Text.Lazy.Encoding qualified as TL
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as B
 import Data.ByteString.Lazy qualified as BL
+import Data.Time.Clock
 import Data.Foldable
 import Debug.Trace
 import Data.Functor.Identity
+import Control.Concurrent
+import Data.List
 
 import Jet
 import Jet qualified as J
@@ -101,6 +104,19 @@ tests =
     , 
         testGroup "concurrency" $ 
             [
+                testCase "compare" $ do
+                    let yieldAfter d x = sleep d *> pure x 
+                        delay = cents 1  
+                        upstream = J.each "abcde"
+                    (ts, rsequential) <- upstream & J.traverse (yieldAfter delay) & J.toList & time
+                    (t1, rconc1) <- upstream & J.traverseConcurrently defaults (yieldAfter delay) & J.toList & time
+                    (t2, rconc2) <- upstream & J.traverseConcurrently (numberOfWorkers 10) (yieldAfter delay) & J.toList & time
+                    let (rsequential', rconc1', rconc2') = (sort rsequential, sort rconc1, sort rconc2)
+                    assertEqual "sequential != conc" rsequential' rconc1'
+                    assertEqual "conc != conc 2" rconc1' rconc2'
+                    assertBool "conc not faster" (t1 < ts)
+                    assertBool "conc2 not faster" (t2 < t1)
+                    pure ()
             ]
     ]
 
@@ -175,8 +191,23 @@ assertLines textFragmentSize input expected = do
     ls <- J.each pieces & J.lines & J.toList
     assertEqual "lines do not match expected" expected ls
 
+sleep :: Delay -> IO ()
+sleep (Delay d) = threadDelay d
+
+newtype Delay = Delay Int
+
+cents :: Int -> Delay 
+cents i = Delay $ i * 10e5 
+
 main :: IO ()
 main = defaultMain tests
+
+time :: IO a -> IO (NominalDiffTime, a)
+time action = do
+    start <- getCurrentTime
+    a <- action
+    stop <- getCurrentTime
+    pure (diffUTCTime stop start, a)
 
 -- TODO
 -- - test byteBundlesOverBuckets
