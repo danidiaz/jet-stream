@@ -197,7 +197,7 @@ sleep (Delay d) = threadDelay d
 newtype Delay = Delay Int
 
 cents :: Int -> Delay 
-cents i = Delay $ i * 10e5 
+cents i = Delay $ i * 1e4 
 
 main :: IO ()
 main = defaultMain tests

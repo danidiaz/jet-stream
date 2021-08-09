@@ -129,6 +129,10 @@ drain :: Sink a
 drain = traverse_ pure
 
 -- | Similar to the instance for pure lists, that generates combinations.
+--
+-- >>> (,) <$> J.each "ab" <*> J.each "cd" & J.toList
+-- [('a','c'),('a','d'),('b','c'),('b','d')]
+--
 instance Applicative Jet where
   pure i = Jet \stop step initial ->
     if
