@@ -581,8 +581,8 @@ zipWithIO zf (Data.Foldable.toList -> ioas0) (Jet f) = Jet \stop step initial ->
 -- | Opens a file and makes the 'Handle' available to all following statements
 -- in the do-block.
 --
--- Notice that it's often simpler to use the convenience 'JetSource' (for
--- reading) and 'JetSink' (for writing) instances of 'File'.
+-- Notice that it's often simpler to use the 'JetSource' (for reading) and
+-- 'JetSink' (for writing) instances of 'File'.
 withFile :: FilePath -> IOMode -> Jet Handle
 withFile path iomode = control @Handle (unsafeCoerceControl @Handle (System.IO.withFile path iomode))
 
@@ -732,6 +732,17 @@ chunkSize = \case
     ChunkSize1M -> 1048576
     ChunkSize2M -> 2097152
 
+-- | Helper multi-parameter typeclass for creating 'Jet' values out of a
+--   variety of common sources.
+--
+--   Because there's no functional dependency, sometimes we need to use
+--   @TypeApplications@ to give the compiler a hint about the type of elements
+--   we want to produce. For example, here we want 'Line's and not, say,
+--   'ByteString's:
+--
+-- >>> action = J.jet @Line (File "foo.txt") & J.sink J.stdout
+--
+--
 class JetSource a source where
     jet :: source -> Jet a 
 
@@ -814,9 +825,11 @@ bytesOverBuckets buckets0 = MealyIO step mempty (pure (Pair NotContinuing bucket
 -- | A sequence of bytes that we might want to keep together.
 newtype ByteBundle = ByteBundle BL.ByteString deriving newtype (Show, Semigroup, Monoid)
 
+-- | Constructs a 'ByteBundle' out of the bytes of some 'Foldable' container.
 bundle :: Foldable f => f ByteString -> ByteBundle
 bundle = ByteBundle . BL.fromChunks . Data.Foldable.toList
 
+-- | Length in bytes.
 bundleLength :: ByteBundle -> Int
 bundleLength (ByteBundle value) = fromIntegral (BL.length value) -- Int64, but unlikely we'll reach the limit
 
@@ -836,10 +849,13 @@ instance Exception BucketOverflow
 -- When the list of buckets sizes is exhausted, all incoming bytes are put into
 -- the same unbounded group.
 --
--- __BEWARE__: If the size bound of a group  turns out to be too small for
--- holding a single 'ByteBundle' value, a 'BucketOverflow' exception is thrown.
---
 -- Useful in combination with 'recast'.
+--
+-- __THROWS__: 
+--
+-- * 'BucketOverflow' exception if the size bound of a group turns out to be
+-- too small for holding even a single 'ByteBundle' value.
+--
 --
 byteBundlesOverBuckets :: [Int] -> Splitter ByteBundle ByteString
 byteBundlesOverBuckets buckets0 = MealyIO step mempty (pure (Pair NotContinuing buckets0))
@@ -881,7 +897,10 @@ instance JetSource Line Handle where
 --
 -- Text Jets
 
--- | __BEWARE__: Might throw 'T.UnicodeException'.
+-- | 
+-- __THROWS__: 
+--
+-- * 'T.UnicodeException'
 decodeUtf8 :: Jet ByteString -> Jet Text
 decodeUtf8 (Jet f) = Jet \stop step initial -> do
     let stop' = stop . pairExtract
@@ -912,6 +931,9 @@ newtype Line = Line_ TL.Text
     deriving newtype (Eq,Ord,Semigroup,Monoid,Show,IsString)
 
 -- https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/pattern_synonyms.html
+
+-- | Unidirectional pattern that allows converting a 'Line' into a 'Text'
+-- during pattern-matching.
 pattern Line text <- Line_ (TL.toStrict -> text)
 
 -- | Converts a 'Line' back to text, without adding the newline.
@@ -925,6 +947,7 @@ lineToUtf8 (Line_ l) = TL.toChunks l <&> T.encodeUtf8 & bundle
 textToLine :: Text -> Line
 textToLine = Line_ . TL.fromStrict
 
+-- | @Data.Text.singleton '\\n'@
 newline :: Text
 newline = T.singleton '\n'
 
@@ -937,6 +960,7 @@ lineContains t (Line_ l)  = TL.isInfixOf (TL.fromStrict t) l
 lineBeginsWith :: Text -> Line -> Bool
 lineBeginsWith t (Line_ l) = TL.isPrefixOf (TL.fromStrict t) l
 
+-- | Adds the 'Text' to the beginning of the 'Line'.
 prefixLine :: Text -> Line -> Line
 prefixLine t (Line_ l) = Line_ (TL.fromChunks (t : TL.toChunks l))
 
@@ -1028,6 +1052,14 @@ downstream stop step = go
 -- | A function that consumes a 'Jet' totally or partially, without returning a result.
 type Sink a = Jet a -> IO ()
 
+-- | Helper multi-parameter typeclass for creating 'Jet'-consuming functions
+-- out of a variety of common destinations.
+--
+-- >>> J.each ["aaa","bbb","ccc"] <&> J.stringToLine & J.sink J.stdout
+-- aaa
+-- bbb
+-- ccc
+--
 class JetSink a target where
     sink :: target -> Sink a
 
@@ -1046,8 +1078,12 @@ instance JetSink Line Handle where
 instance JetSink Text Handle where
     sink handle = traverse_ (T.hPutStr handle)
 
+-- | 'FilePaths' are plain strings. This newtype provides a small measure of
+-- safety over them.
 newtype File = File { getFilePath :: FilePath } deriving Show
 
+-- | The maximum size in bytes of some destination into which we write the
+-- bytes produced by a 'Jet'.
 data BoundedSize x = BoundedSize Int x deriving stock (Show,Read)
 
 instance JetSink ByteBundle Handle where
@@ -1544,7 +1580,8 @@ combiners :: forall s a b r -- ^ foo
     -> Combiners a b
 combiners = Combiners
 
--- | A simpler version of 'withCombiners' that doen't thread a state.
+-- | A simpler version of 'withCombiners' that doen't thread a state; it merely
+-- allocates and deallocates the resource @h@.
 withCombiners_ :: forall h a r 
      . (h -> a -> IO ()) -- ^ Step function that accesses the resource @h@.
     -> (h -> IO ()) -- ^ Finalizer to run after closing each group, and also in the case of an exception. 
@@ -1559,6 +1596,11 @@ withCombiners_ step finalize allocators = do
         (do allocator <- allocators
             pure (allocator, \_ -> pure ()))
 
+-- | 'Combiners' thread a state @s@ while processing each group. Sometimes, in
+-- addition to that, we want to allocate a resource @h@ when we start
+-- processing a group, and deallocate it after we finish processing the group
+-- or an exception is thrown. The typical example is allocating a 'Handle' for
+-- writing the elements of the group as they arrive.
 withCombiners 
     :: forall h s a b r .
        (h -> s -> a -> IO s) -- ^ Step function that accesses the resource @h@ and threads the state @s@.

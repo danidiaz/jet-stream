@@ -2,6 +2,40 @@
 {-# LANGUAGE PatternSynonyms #-}
 -- | A streaming library build around the 'Jet' type, which behaves as a kind of \"effectful list\".
 --
+-- For example, here's a way to print the first ten lines of a file to @stdout@:
+--
+-- >>> action = J.jet @Line (File "foo.txt") & J.limit 10 & J.sink stdout
+--
+-- The code is using the 'J.jet' function to create the 'Jet'. 'J.jet' is part
+-- of the 'J.JetSource' helper typeclass. Meanwhile, 'J.sink' is part of
+-- the complementary 'J.JetSink' typeclass.
+--
+-- Note also the use of '(&)', which is simply a flipped '($)'. I've found it
+-- useful to define forward-chained pipelines.
+--
+-- If instead of printing to @stdout@ we wanted to store the lines in a list:
+--
+-- >>> action = J.jet @Line (File "foo.txt") & J.limit 10 & J.toList
+--
+-- Imagine we wanted to print the combined lines of two files, excepting the first 10 lines of each: 
+--
+-- >>> :{
+-- action = 
+--  do file <- J.each [File "foo.txt", File "bar.txt"]
+--     jet @Line file & J.drop 10
+--  & J.sink stdout
+-- :}
+--
+-- Here we are making use of the 'Monad' instance of 'Jet', which resembles
+-- that of conventional lists. We are mixing monadic do-blocks and conventional
+-- function application. Also we use 'J.each', a function which creates a 'Jet'
+-- out of any 'Foldable' container. 
+--
+-- 'Jet's are 'Monoid's too, so we could have written:
+--
+-- >>> action = [File "foo.txt", File "bar.txt"] & foldMap (jet @Line) & J.drop 10 & J.sink stdout
+--
+--
 module Jet (
         -- * The Jet type
         Jet,
@@ -146,6 +180,21 @@ import Jet.Internal qualified as J
 
 import Data.Function ((&))
 import Data.Functor ((<&>))
+
+-- $setup
+--
+-- >>> :set -XTypeApplications
+-- >>> :set -XImportQualifiedPost
+-- >>> :set -XScopedTypeVariables
+-- >>> :set -XLambdaCase
+-- >>> :set -XNumDecimals
+-- >>> import Jet (Jet, (&))
+-- >>> import Jet qualified as J
+-- >>> import Control.Foldl qualified as L
+-- >>> import Control.Concurrent
+-- >>> import Data.IORef
+-- >>> import Data.Text qualified as T
+
 
 -- $zips
 --
