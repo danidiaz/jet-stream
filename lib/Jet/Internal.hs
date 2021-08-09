@@ -553,6 +553,16 @@ zipWith zf (Data.Foldable.toList -> as0) = zipWithIO (fmap (fmap pure) zf) (fmap
 zipIO :: Foldable f => f (IO a) -> Jet b -> Jet (a, b)
 zipIO = zipWithIO (\x y -> pure (x, y))
 
+-- |
+-- Zips a list of 'IO' actions with a 'Jet', where the combining function can also have effects.
+--
+-- If the list of actions is exhausted, the 'Jet' stops:
+--
+-- >>> J.each [1..] <&> show & zipWithIO (\c1 c2 -> putStrLn (c1 ++ c2)) [pure "a", pure "b"] & J.toList
+-- a1
+-- b2
+-- [(),()]
+--
 zipWithIO :: Foldable f => (a -> b -> IO c) -> f (IO a) -> Jet b -> Jet c
 zipWithIO zf (Data.Foldable.toList -> ioas0) (Jet f) = Jet \stop step initial -> do
   let stop' (Pair [] _) = True
