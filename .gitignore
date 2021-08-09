@@ -24,4 +24,4 @@ cabal.project.local~
 *.exe
 *.txt
 *.vim
-
+proust/
