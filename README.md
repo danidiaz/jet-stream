@@ -44,32 +44,6 @@ I haven't run any benchmarks, but you can safely assume that this library will
 move like a snail compared to
 [streamly](https://hackage.haskell.org/package/streamly)'s Ferrari.
 
-## Some ghci examples
-
-Invoking an external process:
-
-    ghci> mempty & throughProcess defaults (shell "echo foo") & sink stdout
-
-A concurrent pipeline:
-
-    ghci> each @Int [1,2,3] & traverseConcurrently id (\a -> threadDelay 2e6 *> return (2^a)) <&> show <&> T.pack & funnel stdout
-
-A concurrent pipeline with more workers:
-
-    ghci> each @Int [1,2,3] & traverseConcurrently (numberOfWorkers 3) (\a -> threadDelay 2e6 *> return (2^a)) <&> show <&> T.pack & funnel stdout
-
-A concurrent pipeline that limits its outputs:
-
-    ghci> each @Int [1,2,3] & traverseConcurrently id (\a -> (threadDelay 2e6 *> return (2^a))) & Jet.limit 2 <&> show <&> T.pack & funnel stdout
-
-To demonstrate that pending jobs are killed when we the a limit:
-
-    ghci> each @Int [1,2,3] & traverseConcurrently id (\a -> (threadDelay 2e6 *> return (2^a)) `Control.Exception.onException` (print (show a ++ " was canceled"))) & Jet.limit 2 <&> show <&> T.pack & funnel stdout
-
-Example of bounded size:
-
-    ghci> jet (File "foo.txt") & unlinesUtf8 & sink [BoundedSize 1000 (File "bar.txt")]
-
 ## Some close cousins
 
 - [turtle](https://hackage.haskell.org/package/turtle). The `Shell` type
