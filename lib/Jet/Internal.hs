@@ -106,13 +106,13 @@ newtype Jet a = Jet {
 -- "bb"
 deriving stock instance Functor Jet
 
--- | Go through the elements produced by a 'Jet', while keeping an
+-- | Go through the elements produced by a 'Jet', while threading an
 -- state @s@ and possibly performing some effect.
 --
--- The caller is the one who chooses the type of the state @s@, and
--- must pass an initial value for it.
+-- The caller is the one who chooses the type of the state @s@, and must pass
+-- an initial value for it. The state is kept in [weak-head normal form](https://en.wikibooks.org/wiki/Haskell/Graph_reduction#Weak_Head_Normal_Form).
 --
--- He must also provide a predicate on the state that informs the `Jet`
+-- The caller must also provide a predicate on the state that informs the `Jet`
 -- when to stop producing values: whenever the predicate returns
 -- @True@.
 run :: forall a s. Jet a -> (s -> Bool) -> (s -> a -> IO s) -> s -> IO s
@@ -130,6 +130,18 @@ for j k = zipWithIO (\() -> k) (Prelude.repeat (pure ())) j
 for_ :: Jet a -> (a -> IO b) -> IO ()
 for_ j k = consume j (\() -> void <$> k) () 
 
+-- | Apply an effectful transformation to each element in a 'Jet'.
+--
+-- >>> :{
+-- J.each "abc" 
+-- & J.traverse (\c -> let c' = succ c in putStrLn ([c] ++ " -> " ++ [c']) *> pure c')
+-- & J.toList
+-- :}
+-- a -> b
+-- b -> c
+-- c -> d
+-- "bcd"
+--
 traverse :: (a -> IO b) -> Jet a -> Jet b
 traverse =  flip for
 
@@ -416,6 +428,9 @@ tripleExtract (Triple _ _ c) = c
 -- fromTuple :: (a, b) -> Pair a b
 -- fromTuple (a, b) -> Pair a b
 
+-- | >>> J.each "abc" & J.drop 2 & J.toList
+-- "c"
+--
 drop :: Int -> Jet a -> Jet a
 drop limit (Jet f) = Jet \stop step initial -> do
   let stop' = stop . pairExtract
@@ -432,6 +447,9 @@ drop limit (Jet f) = Jet \stop step initial -> do
 
 data DropState = StillDropping | DroppingNoMore
 
+-- | >>> J.each [1..5] & J.dropWhile (<3) & J.toList
+-- [3,4,5]
+--
 dropWhile :: (a -> Bool) -> Jet a -> Jet a
 dropWhile p = dropWhileIO (fmap pure p)
 
@@ -453,7 +471,9 @@ dropWhileIO p (Jet f) = Jet \stop step initial -> do
   Pair _ final <- f stop' step' initial'
   pure final
 
-
+-- | >>> J.each "abc" & J.take 2 & J.toList
+-- "ab"
+--
 take :: Int -> Jet a -> Jet a
 take limit (Jet f) = Jet \stop step initial -> do
   let stop' (Pair count s) =
@@ -471,6 +491,9 @@ limit = take
 
 data TakeState = StillTaking | TakingNoMore
 
+-- | >>> J.each [1..] & J.takeWhile (<5) & J.toList
+-- [1,2,3,4]
+--
 takeWhile :: (a -> Bool) -> Jet a -> Jet a
 takeWhile p = takeWhileIO (fmap pure p)
 
@@ -492,6 +515,10 @@ takeWhileIO p (Jet f) = Jet \stop step initial -> do
   Pair _ final <- f stop' step' initial'
   pure final
 
+-- | 
+-- >>> J.each "abc" & J.filter (=='a') & J.toList
+-- "a"
+--
 filter :: (a -> Bool) -> Jet a -> Jet a
 filter p = filterIO (fmap pure p)
 
@@ -513,6 +540,10 @@ filterIO p (Jet f) = Jet \stop step initial -> do
 -- The resulting 'Jet' has the same number of elements as the original one.
 --
 -- Unlike 'Data.Traversable.mapAccumL', it doesn't make the final state available. 
+--
+-- >>> J.each [1,2,3,4] & J.mapAccum (\a b -> (a + b,a)) 0 & J.toList
+-- [0,1,3,6]
+--
 mapAccum :: (a -> b -> (a, c)) -> a -> Jet b -> Jet c
 mapAccum stepAcc = mapAccumIO (fmap (fmap pure) stepAcc)
 
@@ -555,6 +586,13 @@ intersperse intrusion (Jet upstream) = Jet \stop step initial -> do
   Pair _ final <- upstream stop' step' initial'
   pure final
 
+-- | 
+-- >>> J.each "abc" & J.zip [1..] & J.toList
+-- [(1,'a'),(2,'b'),(3,'c')]
+--
+-- >>> J.each [1..] & J.zip "abc" & J.toList
+-- [('a',1),('b',2),('c',3)]
+--
 zip :: Foldable f => f a -> Jet b -> Jet (a, b)
 zip = zipWith (,)
 

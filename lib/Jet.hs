@@ -89,6 +89,7 @@ module Jet (
         J.filterIO,
         J.take,
         J.limit,
+        J.takeWhile,
         J.takeWhileIO,
         J.drop,
         J.dropWhile,
