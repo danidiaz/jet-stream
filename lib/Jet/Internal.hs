@@ -1345,6 +1345,25 @@ throughProcess adaptConf = throughProcess_ (adaptConf defaultProcConf)
 
 -- | Like 'throughProcess', but feeding and reading 'Line's using the default
 -- system encoding.
+--
+-- >>> :{
+-- J.each ["aaa","bbb","ccc"]
+-- <&> J.stringToLine
+-- & linesThroughProcess defaults (shell "cat")
+-- & J.toList
+-- :}
+-- ["aaa","bbb","ccc"]
+--
+-- An example of not reading all the lines from a long-lived process that gets cancelled:
+--
+-- >>> :{
+-- mempty
+-- & linesThroughProcess defaults (shell "{ printf \"aaa\\nbbb\\nccc\\n\" ; sleep infinity ; }")
+-- & J.limit 2
+-- & J.toList
+-- :}
+-- ["aaa","bbb"]
+--
 linesThroughProcess :: (ProcConf -> ProcConf) -> CreateProcess -> Jet Line -> Jet Line
 linesThroughProcess adaptConf procSpec = do
     let textLinesProcConf = (adaptConf defaultProcConf) {
