@@ -26,6 +26,11 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE ApplicativeDo #-}
 {-# OPTIONS_GHC -Wno-partial-type-signatures  #-}
+-- | Tampering with the internals lets you write invalid 'Jet's that don't
+-- respect stop signals from consumers, so be careful.
+--
+-- Also, the internals expose 'Line' and 'ByteBundle' as thin coats of paint
+-- over lazy text and lazy bytestring, respectively.
 module Jet.Internal where
 
 import Control.Applicative
@@ -1153,12 +1158,28 @@ singleton a = DList $ (a :)
 -- | Process the values yielded by the upstream 'Jet' in a concurrent way,
 -- and return the results in the form of another 'Jet' as they are produced.
 --
+-- __NB__: this function might scramble the order of the returned values. Right
+-- now there isn't a function for unscrambling them.
+--
+-- >>> :{
+--  J.each [(3,'a'), (2,'b'), (1,'c')]
+--  & J.traverseConcurrently (numberOfWorkers 10) (\(d,c) -> threadDelay (d*1e5) *> pure c)
+--  & J.toList
+-- :}
+-- "cba"
+--
 -- What happens if we 'limit' the resulting 'Jet' and we reach that limit, or
 -- if we otherwise stop consuming the 'Jet' before it gets exhausted? In those
 -- cases, all pending @IO b@ tasks are cancelled.
 --
--- __NB__: this function might scramble the order of the returned values. Right
--- now there isn't a function for unscrambling them.
+-- >>> :{
+--  J.each [(9999,'a'), (2,'b'), (1,'c')]
+--  & J.traverseConcurrently (numberOfWorkers 10) (\(d,c) -> threadDelay (d*1e5) *> pure c)
+--  & J.take 2
+--  & J.toList
+-- :}
+-- "cb"
+--
 traverseConcurrently :: (PoolConf -> PoolConf) -> (a -> IO b) -> Jet a -> Jet b
 -- TODO:
 -- It would be nice to have 0-lengh channels for which one side blocks until
