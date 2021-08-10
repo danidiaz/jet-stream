@@ -535,16 +535,12 @@ data Touched =
 
 -- | 
 -- >>> J.each "abc" & J.intersperse '-' & J.toList
---
---
+-- "a-b-c"
 --
 intersperse :: a -> Jet a -> Jet a
 intersperse intrusion (Jet upstream) = Jet \stop step initial -> do
   let stop' = stop . pairExtract
       step' (Pair AlreadyTouched s) a = do
-        !s' <- step s a
-        pure (Pair AlreadyTouched s')
-      step' (Pair NotYetTouched s) a = do
         !s' <- step s intrusion
         if 
             | stop s' ->
@@ -552,6 +548,9 @@ intersperse intrusion (Jet upstream) = Jet \stop step initial -> do
             | otherwise -> do
                 !s'' <- step s' a
                 pure (Pair AlreadyTouched s'')
+      step' (Pair NotYetTouched s) a = do
+        !s' <- step s a
+        pure (Pair AlreadyTouched s')
       initial' = Pair NotYetTouched initial
   Pair _ final <- upstream stop' step' initial'
   pure final
