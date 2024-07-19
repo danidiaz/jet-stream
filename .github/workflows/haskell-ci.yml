@@ -58,6 +58,8 @@ jobs:
           HC=$("$HOME/.ghcup/bin/ghcup" whereis ghc "$HCVER")
           HCPKG=$(echo "$HC" | sed 's#ghc$#ghc-pkg#')
           HADDOCK=$(echo "$HC" | sed 's#ghc$#haddock#')
+          # doctest needs ghc and ghc-pkg to be on the path.
+          echo $(dirname "$HC") >> "$GITHUB_PATH"
           echo "HC=$HC" >> "$GITHUB_ENV"
           echo "HCPKG=$HCPKG" >> "$GITHUB_ENV"
           echo "HADDOCK=$HADDOCK" >> "$GITHUB_ENV"
@@ -172,6 +174,10 @@ jobs:
       - name: tests
         run: |
           $CABAL v2-test $ARG_COMPILER $ARG_TESTS $ARG_BENCH all --test-show-details=direct
+      - name: doctests
+        run: |
+          $CABAL v2-install $ARG_COMPILER --ghc-options="-rtsopts" doctest --overwrite-policy=always
+          $CABAL v2-repl all --build-depends=QuickCheck --build-depends=template-haskell --with-ghc=doctest --repl-options='-w -Wdefault'
       - name: cabal check
         run: |
           cd ${PKGDIR_jet_stream} || false
