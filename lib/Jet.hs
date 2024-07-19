@@ -114,9 +114,7 @@ module Jet (
         -- ** Building your own
         -- $doityourself
         J.control,
-        J.unsafeCoerceControl,
         J.control_,
-        J.unsafeCoerceControl_,
         -- * Folding Jets
         -- $folding
         J.fold,
@@ -263,11 +261,6 @@ import Data.Functor ((<&>))
 -- Sometimes we want to lift some existing
 -- resource-handling operation not already covered, one that works with plain
 -- 'IO' values. These functions help with that.
---
--- They have a linear type to statically forbid
--- [\"funny\"](http://blog.ezyang.com/2012/01/monadbasecontrol-is-unsound/)
--- operations like @\\x -> x *> x@ that disrupt proper threading of the
--- consumer state.
 --
 
 

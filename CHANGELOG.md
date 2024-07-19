@@ -4,6 +4,7 @@
 
 * Switch to GHC2021
 * Remove dependency on 'conceit' package.
+* Remove the use of LinearTypes.
 
 ## 0.1.0.0 -- YYYY-mm-dd
 

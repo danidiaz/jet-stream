@@ -2,7 +2,6 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE LinearTypes #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -24,7 +23,6 @@ import Data.Foldable qualified
 import Prelude hiding (traverse_, for_, filter, drop, dropWhile, fold, take,
                        takeWhile, unfold, zip, zipWith, filterM, lines, intersperse, unlines)
 import Prelude qualified
-import Unsafe.Coerce qualified
 import System.IO (Handle, IOMode(..), hClose, openBinaryFile)
 import System.IO qualified
 import Data.Function ((&))
@@ -615,7 +613,7 @@ zipWithIO zf (Data.Foldable.toList -> ioas0) (Jet f) = Jet \stop step initial ->
 -- Notice that it's often simpler to use the 'JetSource' (for reading) and
 -- 'JetSink' (for writing) instances of 'File'.
 withFile :: FilePath -> IOMode -> Jet Handle
-withFile path iomode = control @Handle (unsafeCoerceControl @Handle (System.IO.withFile path iomode))
+withFile path iomode = control @Handle (System.IO.withFile path iomode)
 
 -- |
 --
@@ -631,17 +629,17 @@ withFile path iomode = control @Handle (unsafeCoerceControl @Handle (System.IO.w
 bracket :: forall a b . IO a -- ^ allocator
         -> (a -> IO b) -- ^ finalizer
         -> Jet a
-bracket allocate free = control @a (unsafeCoerceControl @a (Control.Exception.bracket allocate free))
+bracket allocate free = control @a (Control.Exception.bracket allocate free)
 
 bracket_ :: forall a b . IO a -- ^ allocator
          -> IO b -- ^ finalizer 
          -> Jet ()
-bracket_ allocate free = control_ (unsafeCoerceControl_ (Control.Exception.bracket_ allocate free))
+bracket_ allocate free = control_ (Control.Exception.bracket_ allocate free)
 
 bracketOnError :: forall a b . IO a -- ^ allocator
                -> (a -> IO b) -- ^ finalizer
                -> Jet a
-bracketOnError allocate free = control @a (unsafeCoerceControl @a (Control.Exception.bracketOnError allocate free))
+bracketOnError allocate free = control @a (Control.Exception.bracketOnError allocate free)
 
 -- | 
 --
@@ -671,15 +669,18 @@ bracketOnError allocate free = control @a (unsafeCoerceControl @a (Control.Excep
 --
 finally :: IO a -> Jet ()
 finally afterward =
-    control_ (unsafeCoerceControl_ (flip Control.Exception.finally afterward))
+    control_ (flip Control.Exception.finally afterward)
 
 onException :: IO a -> Jet ()
 onException afterward =
-    control_ (unsafeCoerceControl_ (flip Control.Exception.onException afterward))
+    control_ (flip Control.Exception.onException afterward)
 
 -- | Lift a control operation (like 'Control.Exception.bracket') for which the
 -- callback uses the allocated resource.
-control :: forall resource. (forall x. (resource -> IO x) %1 -> IO x) -> Jet resource
+--
+-- __BEWARE__: the control operation shouldn't do weird things like executing
+-- the action twice.
+control :: forall resource. (forall x. (resource -> IO x) -> IO x) -> Jet resource
 control f =
   Jet \stop step initial ->
     if
@@ -690,7 +691,10 @@ control f =
 
 -- | Lift a control operation (like 'Control.Exception.finally') for which the
 -- callback doesn't use the allocated resource.
-control_ :: (forall x. IO x %1-> IO x) -> Jet ()
+--
+-- __BEWARE__: the control operation shouldn't do weird things like executing
+-- the action twice.
+control_ :: (forall x. IO x -> IO x) -> Jet ()
 control_ f =
   Jet \stop step initial ->
     if
@@ -698,19 +702,6 @@ control_ f =
           pure initial
         | otherwise -> do
           f (step initial ())
-
--- | \"morally\", all control operations compatible with this library should
--- execute the callback only once, which means that they should have a linear
--- type. But because linear types are not widespread, they usually are given a
--- less precise non-linear type. If you know what you are doing, use this
--- function to give them a linear type.
-unsafeCoerceControl :: forall resource . (forall x. (resource -> IO x) -> IO x) -> (forall x. (resource -> IO x) %1 -> IO x)
-unsafeCoerceControl f = Unsafe.Coerce.unsafeCoerce f
-
--- | Line 'unsafeCoerceControl', for when the callback doesn't use the
--- allocated resource.
-unsafeCoerceControl_ :: (forall x. IO x -> IO x) -> (forall x. IO x %1 -> IO x)
-unsafeCoerceControl_ f = Unsafe.Coerce.unsafeCoerce f
 
 -- | 
 --
