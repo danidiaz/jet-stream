@@ -24,6 +24,7 @@ license-file:       LICENSE
 author:             Daniel Diaz Carrete
 maintainer:         diaz_carrete@yahoo.com
 category:           Streaming
+tested-with:        GHC ==9.6.4
 extra-source-files: 
     CHANGELOG.md, 
     README.md,
