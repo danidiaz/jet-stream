@@ -25,6 +25,7 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# OPTIONS_GHC -Wno-partial-type-signatures  #-}
 -- | Tampering with the internals lets you write invalid 'Jet's that don't
 -- respect stop signals from consumers, so be careful.
@@ -63,7 +64,6 @@ import Control.Concurrent
 import Data.IORef
 import Control.Concurrent.STM
 import Control.Concurrent.MVar
-import Control.Concurrent.Conceit
 import Control.Concurrent.STM.TBMQueue
 import Control.Concurrent.Async
 import System.Process
@@ -1286,13 +1286,13 @@ traverseConcurrently adaptConf makeTask upstream = Jet \stop step initial -> do
               *>
               Concurrently do
                   finalLeft <- do
-                      runConceit $ 
+                      runConcurrentlyE $ 
                           -- The worker pool is always killed when the output reader finishes,
                           -- but for the "happy path" the workers will already be dead.
-                          Conceit (Right <$> replicateConcurrently_ _numberOfWorkers worker)
+                          ConcurrentlyE (Right <$> replicateConcurrently_ _numberOfWorkers worker)
                           *> 
                           -- This Left is what kills the worker pool.
-                          Conceit (Left <$> outputQueueReader initial)
+                          ConcurrentlyE (Left <$> outputQueueReader initial)
                   case finalLeft of
                       Right () -> do
                           error "never happens, the Left always wins"
@@ -1437,12 +1437,12 @@ throughProcess_  procConf procSpec upstream = Jet \stop step initial -> do
                                      b <- _readFromStdout stdout'
                                      !s' <- step s b
                                      stdoutReader s'
-                    runConceit $ 
-                        _Conceit do stdinWriter
+                    runConcurrentlyE $ 
+                        ConcurrentlyE do Right <$> stdinWriter
                         *> 
-                        _Conceit do stderrReader
+                        ConcurrentlyE do Right <$> stderrReader
                         *> 
-                        Conceit do stdoutReader initial
+                        ConcurrentlyE do stdoutReader initial
           pure (either id id finalEither) 
 
 -- | Configuration record with some extra options in addition to those in "CreateProcess".
