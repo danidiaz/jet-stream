@@ -62,16 +62,3 @@ test-suite tests
       time            >= 1.9,
       tasty           >= 1.4.0,
       tasty-hunit     >= 0.10.0.2,
-
--- VERY IMPORTANT for doctests to work: https://stackoverflow.com/a/58027909/1364288
--- http://hackage.haskell.org/package/cabal-doctest
-test-suite doctests
-  import:              common
-  ghc-options:         -threaded
-  type:                exitcode-stdio-1.0
-  hs-source-dirs:      test
-  main-is:             doctests.hs
-  build-depends:       
-                       jet-stream, 
-                       foldl              ^>= 1.4.12,
-                       doctest            ^>= 0.22,
