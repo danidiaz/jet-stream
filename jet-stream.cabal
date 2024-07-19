@@ -39,7 +39,7 @@ common common
         base >= 4.11.0.0 && < 5,
         bytestring >= 0.12.1 && < 0.13,
         stm >= 2.5.3 && < 2.6,
-        text >= 2.0.0 && < 2.2,
+        text >= 2.0 && < 2.2,
         process >= 1.6.19 && < 1.7,
         stm-chans ^>= 3.0.0.0,
         async ^>= 2.2.5
